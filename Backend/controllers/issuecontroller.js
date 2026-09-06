@@ -1,6 +1,7 @@
 const Issue = require("../models/issue");
 const Comment = require("../models/comment");
 const IssueHistory = require("../models/issuehistory");
+const User = require("../models/user");
 
 // Create Issue
 const createIssue = async (req, res) => {
@@ -22,21 +23,87 @@ const createIssue = async (req, res) => {
       });
     }
 
+    if (title.trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        message: "Issue title must be at least 3 characters",
+      });
+    }
+
+    if (description.trim().length < 5) {
+      return res.status(400).json({
+        success: false,
+        message: "Issue description must be at least 5 characters",
+      });
+    }
+
+    const allowedPriorities = [
+      "Low",
+      "Medium",
+      "High",
+      "Critical",
+    ];
+
+    const allowedStatuses = [
+      "Open",
+      "In Progress",
+      "Resolved",
+      "Closed",
+    ];
+
+    if (
+      priority &&
+      !allowedPriorities.includes(priority)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid priority",
+      });
+    }
+
+    if (
+      status &&
+      !allowedStatuses.includes(status)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status",
+      });
+    }
+
+    if (assignedTo) {
+      const assignedUser = await User.findById(assignedTo);
+
+      if (!assignedUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Assigned user not found",
+        });
+      }
+    }
+
     const issue = await Issue.create({
       projectId,
-      title,
-      description,
-      screenshots: screenshots || [],
+      title: title.trim(),
+      description: description.trim(),
+      screenshots: Array.isArray(screenshots)
+        ? screenshots
+        : [],
       priority: priority || "Medium",
       status: status || "Open",
       assignedTo: assignedTo || null,
       createdBy: req.user.userId,
     });
 
+    const populatedIssue = await Issue.findById(issue._id)
+      .populate("createdBy", "name email")
+      .populate("assignedTo", "name email")
+      .populate("projectId", "name");
+
     res.status(201).json({
       success: true,
       message: "Issue created successfully",
-      issue,
+      issue: populatedIssue,
     });
   } catch (error) {
     res.status(500).json({
@@ -52,22 +119,18 @@ const getIssues = async (req, res) => {
   try {
     const filter = {};
 
-    // Filter by project
     if (req.query.projectId) {
       filter.projectId = req.query.projectId;
     }
 
-    // Filter by status
     if (req.query.status) {
       filter.status = req.query.status;
     }
 
-    // Filter by priority
     if (req.query.priority) {
       filter.priority = req.query.priority;
     }
 
-    // Search by title
     if (req.query.search) {
       filter.title = {
         $regex: req.query.search,
@@ -78,7 +141,8 @@ const getIssues = async (req, res) => {
     const issues = await Issue.find(filter)
       .populate("createdBy", "name email")
       .populate("assignedTo", "name email")
-      .populate("projectId", "name");
+      .populate("projectId", "name")
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -143,21 +207,36 @@ const updateIssue = async (req, res) => {
       });
     }
 
-    // Store old values for history
     const oldStatus = issue.status;
     const oldPriority = issue.priority;
     const oldAssignedTo = issue.assignedTo;
 
     if (title !== undefined) {
-      issue.title = title;
+      if (!title.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Title cannot be empty",
+        });
+      }
+
+      issue.title = title.trim();
     }
 
     if (description !== undefined) {
-      issue.description = description;
+      if (!description.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Description cannot be empty",
+        });
+      }
+
+      issue.description = description.trim();
     }
 
     if (screenshots !== undefined) {
-      issue.screenshots = screenshots;
+      issue.screenshots = Array.isArray(screenshots)
+        ? screenshots
+        : [];
     }
 
     if (priority !== undefined) {
@@ -169,12 +248,24 @@ const updateIssue = async (req, res) => {
     }
 
     if (assignedTo !== undefined) {
-      issue.assignedTo = assignedTo;
+      if (assignedTo) {
+        const assignedUser = await User.findById(
+          assignedTo
+        );
+
+        if (!assignedUser) {
+          return res.status(400).json({
+            success: false,
+            message: "Assigned user not found",
+          });
+        }
+      }
+
+      issue.assignedTo = assignedTo || null;
     }
 
     await issue.save();
 
-    // Save status history
     if (oldStatus !== issue.status) {
       await IssueHistory.create({
         issueId: issue._id,
@@ -185,7 +276,6 @@ const updateIssue = async (req, res) => {
       });
     }
 
-    // Save priority history
     if (oldPriority !== issue.priority) {
       await IssueHistory.create({
         issueId: issue._id,
@@ -196,7 +286,6 @@ const updateIssue = async (req, res) => {
       });
     }
 
-    // Save assignment history
     const oldAssignedId = oldAssignedTo
       ? String(oldAssignedTo)
       : "";
@@ -210,15 +299,20 @@ const updateIssue = async (req, res) => {
         issueId: issue._id,
         userId: req.user.userId,
         action: "User assigned",
-        oldValue: oldAssignedId,
-        newValue: newAssignedId,
+        oldValue: oldAssignedId || "Unassigned",
+        newValue: newAssignedId || "Unassigned",
       });
     }
+
+    const updatedIssue = await Issue.findById(issue._id)
+      .populate("createdBy", "name email")
+      .populate("assignedTo", "name email")
+      .populate("projectId", "name");
 
     res.status(200).json({
       success: true,
       message: "Issue updated successfully",
-      issue,
+      issue: updatedIssue,
     });
   } catch (error) {
     res.status(500).json({
@@ -243,6 +337,14 @@ const deleteIssue = async (req, res) => {
 
     await Issue.findByIdAndDelete(req.params.id);
 
+    await Comment.deleteMany({
+      issueId: req.params.id,
+    });
+
+    await IssueHistory.deleteMany({
+      issueId: req.params.id,
+    });
+
     res.status(200).json({
       success: true,
       message: "Issue deleted successfully",
@@ -261,23 +363,38 @@ const addComment = async (req, res) => {
   try {
     const { issueId, text } = req.body;
 
-    if (!issueId || !text) {
+    if (!issueId || !text || !text.trim()) {
       return res.status(400).json({
         success: false,
         message: "Issue ID and comment text are required",
       });
     }
 
+    const issue = await Issue.findById(issueId);
+
+    if (!issue) {
+      return res.status(404).json({
+        success: false,
+        message: "Issue not found",
+      });
+    }
+
     const comment = await Comment.create({
       issueId,
       userId: req.user.userId,
-      text,
+      text: text.trim(),
     });
+
+    const populatedComment =
+      await Comment.findById(comment._id).populate(
+        "userId",
+        "name email"
+      );
 
     res.status(201).json({
       success: true,
       message: "Comment added successfully",
-      comment,
+      comment: populatedComment,
     });
   } catch (error) {
     res.status(500).json({
