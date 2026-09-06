@@ -15,10 +15,10 @@ const createIssue = async (req, res) => {
       assignedTo,
     } = req.body;
 
-    if (!projectId || !title) {
+    if (!projectId || !title || !description) {
       return res.status(400).json({
         success: false,
-        message: "Project ID and title are required",
+        message: "Project ID, title and description are required",
       });
     }
 
@@ -27,8 +27,8 @@ const createIssue = async (req, res) => {
       title,
       description,
       screenshots: screenshots || [],
-      priority: priority || "medium",
-      status: status || "open",
+      priority: priority || "Medium",
+      status: status || "Open",
       assignedTo: assignedTo || null,
       createdBy: req.user.userId,
     });
@@ -148,12 +148,13 @@ const updateIssue = async (req, res) => {
     const oldPriority = issue.priority;
     const oldAssignedTo = issue.assignedTo;
 
-    issue.title = title || issue.title;
+    if (title !== undefined) {
+      issue.title = title;
+    }
 
-    issue.description =
-      description !== undefined
-        ? description
-        : issue.description;
+    if (description !== undefined) {
+      issue.description = description;
+    }
 
     if (screenshots !== undefined) {
       issue.screenshots = screenshots;
@@ -196,17 +197,21 @@ const updateIssue = async (req, res) => {
     }
 
     // Save assignment history
-    if (String(oldAssignedTo) !== String(issue.assignedTo)) {
+    const oldAssignedId = oldAssignedTo
+      ? String(oldAssignedTo)
+      : "";
+
+    const newAssignedId = issue.assignedTo
+      ? String(issue.assignedTo)
+      : "";
+
+    if (oldAssignedId !== newAssignedId) {
       await IssueHistory.create({
         issueId: issue._id,
         userId: req.user.userId,
         action: "User assigned",
-        oldValue: oldAssignedTo
-          ? String(oldAssignedTo)
-          : "",
-        newValue: issue.assignedTo
-          ? String(issue.assignedTo)
-          : "",
+        oldValue: oldAssignedId,
+        newValue: newAssignedId,
       });
     }
 
@@ -288,7 +293,9 @@ const getComments = async (req, res) => {
   try {
     const comments = await Comment.find({
       issueId: req.params.issueId,
-    }).populate("userId", "name email");
+    })
+      .populate("userId", "name email")
+      .sort({ createdAt: 1 });
 
     res.status(200).json({
       success: true,

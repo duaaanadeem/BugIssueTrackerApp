@@ -5,32 +5,32 @@ const issueHistorySchema = new mongoose.Schema(
     issueId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Issue",
-      required: true
+      required: true,
     },
 
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true
+      required: true,
     },
 
     action: {
       type: String,
-      required: true
+      required: true,
     },
 
     oldValue: {
       type: String,
-      default: null
+      default: null,
     },
 
     newValue: {
       type: String,
-      default: null
-    }
+      default: null,
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
   }
 );
 

@@ -9,7 +9,7 @@ const {
   addComment,
   getComments,
   getIssueHistory,
-} = require("../controllers/Issuecontroller");
+} = require("../controllers/issuecontroller");
 
 const authMiddleware = require("../middleware/authmiddleware");
 

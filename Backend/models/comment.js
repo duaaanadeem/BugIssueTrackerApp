@@ -5,23 +5,23 @@ const commentSchema = new mongoose.Schema(
     issueId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Issue",
-      required: true
+      required: true,
     },
 
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true
+      required: true,
     },
 
     text: {
       type: String,
       required: true,
-      trim: true
-    }
+      trim: true,
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
   }
 );
 

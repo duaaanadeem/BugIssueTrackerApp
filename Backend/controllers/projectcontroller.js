@@ -12,6 +12,13 @@ const createProject = async (req, res) => {
       });
     }
 
+    if (!description) {
+      return res.status(400).json({
+        success: false,
+        message: "Project description is required",
+      });
+    }
+
     const project = await Project.create({
       name,
       description,
@@ -95,9 +102,13 @@ const updateProject = async (req, res) => {
       });
     }
 
-    project.name = name || project.name;
-    project.description =
-      description !== undefined ? description : project.description;
+    if (name !== undefined) {
+      project.name = name;
+    }
+
+    if (description !== undefined) {
+      project.description = description;
+    }
 
     if (members !== undefined) {
       project.members = members;

@@ -5,53 +5,53 @@ const issueSchema = new mongoose.Schema(
     projectId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Project",
-      required: true
+      required: true,
     },
 
     title: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
 
     description: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
 
     screenshots: [
       {
-        type: String
-      }
+        type: String,
+      },
     ],
 
     priority: {
       type: String,
       enum: ["Low", "Medium", "High", "Critical"],
-      default: "Medium"
+      default: "Medium",
     },
 
     status: {
       type: String,
       enum: ["Open", "In Progress", "Resolved", "Closed"],
-      default: "Open"
+      default: "Open",
     },
 
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      default: null
+      default: null,
     },
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true
-    }
+      required: true,
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
   }
 );
 

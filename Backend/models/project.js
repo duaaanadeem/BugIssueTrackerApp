@@ -5,30 +5,30 @@ const projectSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
 
     description: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true
+      required: true,
     },
 
     members: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "User"
-      }
-    ]
+        ref: "User",
+      },
+    ],
   },
   {
-    timestamps: true
+    timestamps: true,
   }
 );
 

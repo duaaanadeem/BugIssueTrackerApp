@@ -62,7 +62,6 @@ const login = async (req, res) => {
       });
     }
 
-    // Find user
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -72,7 +71,6 @@ const login = async (req, res) => {
       });
     }
 
-    // Compare password
     const isPasswordCorrect = await bcrypt.compare(
       password,
       user.password
@@ -85,7 +83,6 @@ const login = async (req, res) => {
       });
     }
 
-    // Create JWT
     const token = jwt.sign(
       {
         userId: user._id,
