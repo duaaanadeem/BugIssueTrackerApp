@@ -41,9 +41,7 @@ export const apiRequest = async (
 
     return data;
   } catch (error) {
-    if (
-      error.message === "Network request failed"
-    ) {
+    if (error.message === "Network request failed") {
       throw new Error(
         "Unable to connect to the server. Please check your internet connection."
       );

@@ -1,221 +1,171 @@
 import React, {
   useContext,
-  useEffect,
   useState,
 } from "react";
 
 import {
   View,
   Text,
+  TextInput,
   Pressable,
   StyleSheet,
   Alert,
-  FlatList,
-  RefreshControl,
+  ActivityIndicator,
+  ScrollView,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
 
 import { AuthContext } from "../context/authcontext";
 
 import { apiRequest } from "../services/api";
 
-export default function ProjectsScreen({
+export default function CreateProjectScreen({
   navigation,
 }) {
-  const { token } =
-    useContext(AuthContext);
+  const { token } = useContext(AuthContext);
 
-  const [projects, setProjects] =
-    useState([]);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
 
-  const [loading, setLoading] =
-    useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const [refreshing, setRefreshing] =
-    useState(false);
+  const handleCreate = async () => {
+    Keyboard.dismiss();
 
-  const loadProjects = async (
-    showLoader = true
-  ) => {
+    if (!name.trim()) {
+      Alert.alert(
+        "Project name required",
+        "Please enter a name for your project."
+      );
+      return;
+    }
+
+    if (name.trim().length < 3) {
+      Alert.alert(
+        "Invalid name",
+        "Project name must be at least 3 characters."
+      );
+      return;
+    }
+
+    if (!description.trim()) {
+      Alert.alert(
+        "Description required",
+        "Please describe what this project is about."
+      );
+      return;
+    }
+
     try {
-      if (showLoader) {
-        setLoading(true);
-      }
+      setSubmitting(true);
 
       const data = await apiRequest(
         "/projects",
-        "GET",
-        null,
+        "POST",
+        {
+          name: name.trim(),
+          description: description.trim(),
+        },
         token
       );
 
-      setProjects(data.projects || []);
+      Alert.alert(
+        "Project created",
+        "Your project has been created successfully.",
+        [
+          {
+            text: "View Project",
+            onPress: () =>
+              navigation.replace(
+                "ProjectDetails",
+                {
+                  projectId: data.project._id,
+                }
+              ),
+          },
+        ]
+      );
     } catch (error) {
       Alert.alert(
-        "Unable to load projects",
+        "Unable to create project",
         error.message
       );
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  useEffect(() => {
-    const unsubscribe =
-      navigation.addListener(
-        "focus",
-        () => loadProjects()
-      );
-
-    return unsubscribe;
-  }, [navigation, token]);
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await loadProjects(false);
-    setRefreshing(false);
-  };
-
-  const renderProject = ({
-    item,
-  }) => (
-    <Pressable
-      style={styles.card}
-      onPress={() =>
-        navigation.navigate(
-          "ProjectDetails",
-          {
-            projectId: item._id,
-          }
-        )
-      }
-    >
-      <View style={styles.cardTop}>
-        <View style={styles.projectIcon}>
-          <Text
-            style={styles.projectIconText}
-          >
-            {item.name
-              ?.charAt(0)
-              .toUpperCase() || "P"}
-          </Text>
-        </View>
-
-        <View style={styles.arrowCircle}>
-          <Text style={styles.arrow}>
-            →
-          </Text>
-        </View>
-      </View>
-
-      <Text style={styles.name}>
-        {item.name}
-      </Text>
-
-      <Text
-        style={styles.description}
-        numberOfLines={2}
-      >
-        {item.description ||
-          "No description available"}
-      </Text>
-
-      <Text style={styles.created}>
-        Created by{" "}
-        {item.createdBy?.name ||
-          "Unknown user"}
-      </Text>
-    </Pressable>
-  );
-
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.heading}>
-            Your Projects
-          </Text>
-
-          <Text style={styles.subheading}>
-            {projects.length} project
-            {projects.length === 1
-              ? ""
-              : "s"} available
-          </Text>
-        </View>
-
-        <Pressable
-          style={styles.addButton}
-          onPress={() =>
-            navigation.navigate(
-              "CreateProject"
-            )
-          }
-        >
-          <Text style={styles.addText}>
-            + New
-          </Text>
-        </Pressable>
-      </View>
-
-      <FlatList
-        data={projects}
-        keyExtractor={(item) =>
-          item._id
-        }
-        renderItem={renderProject}
+    <TouchableWithoutFeedback
+      onPress={Keyboard.dismiss}
+    >
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
+      >
+        <Text style={styles.title}>
+          Create a project
+        </Text>
+
+        <Text style={styles.subtitle}>
+          Set up a new project so your team can
+          start reporting and tracking issues.
+        </Text>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>
+            Project Name
+          </Text>
+
+          <TextInput
+            placeholder="e.g. Mobile App Redesign"
+            placeholderTextColor="#94A3B8"
+            value={name}
+            onChangeText={setName}
+            style={styles.input}
+            editable={!submitting}
           />
-        }
-        contentContainerStyle={
-          projects.length === 0
-            ? styles.emptyContainer
-            : styles.list
-        }
-        ListEmptyComponent={
-          loading ? (
-            <Text style={styles.empty}>
-              Loading projects...
-            </Text>
-          ) : (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyIcon}>
-                P
-              </Text>
 
-              <Text style={styles.emptyTitle}>
-                No projects yet
-              </Text>
+          <Text style={styles.label}>
+            Description
+          </Text>
 
-              <Text style={styles.emptyText}>
-                Create your first project to
-                start tracking issues.
-              </Text>
+          <TextInput
+            placeholder="What is this project about?"
+            placeholderTextColor="#94A3B8"
+            value={description}
+            onChangeText={setDescription}
+            style={[
+              styles.input,
+              styles.textarea,
+            ]}
+            multiline
+            textAlignVertical="top"
+            editable={!submitting}
+          />
 
-              <Pressable
-                style={styles.emptyButton}
-                onPress={() =>
-                  navigation.navigate(
-                    "CreateProject"
-                  )
-                }
-              >
-                <Text
-                  style={
-                    styles.emptyButtonText
-                  }
-                >
-                  Create Project
-                </Text>
-              </Pressable>
-            </View>
-          )
-        }
-      />
-    </View>
+          <Pressable
+            style={[
+              styles.button,
+              submitting && styles.disabled,
+            ]}
+            onPress={handleCreate}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>
+                Create Project
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      </ScrollView>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -223,156 +173,72 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",
+  },
+
+  content: {
     padding: 20,
+    paddingBottom: 40,
   },
 
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 18,
-  },
-
-  heading: {
-    fontSize: 25,
+  title: {
+    fontSize: 27,
     fontWeight: "800",
     color: "#0F172A",
   },
 
-  subheading: {
+  subtitle: {
     color: "#64748B",
-    marginTop: 4,
-  },
-
-  addButton: {
-    backgroundColor: "#111827",
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 12,
-  },
-
-  addText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
-
-  list: {
-    paddingBottom: 25,
+    marginTop: 7,
+    marginBottom: 20,
+    lineHeight: 21,
   },
 
   card: {
     backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 13,
+    borderRadius: 20,
+    padding: 20,
     elevation: 2,
   },
 
-  cardTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 15,
-  },
-
-  projectIcon: {
-    width: 45,
-    height: 45,
-    borderRadius: 14,
-    backgroundColor: "#F1F5F9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  projectIconText: {
-    fontSize: 18,
+  label: {
+    fontSize: 13,
     fontWeight: "800",
-    color: "#111827",
+    color: "#334155",
+    marginBottom: 8,
+    marginTop: 3,
   },
 
-  arrowCircle: {
-    width: 35,
-    height: 35,
-    borderRadius: 18,
-    backgroundColor: "#F8FAFC",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  arrow: {
-    fontSize: 19,
-    color: "#64748B",
-  },
-
-  name: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-
-  description: {
-    color: "#64748B",
-    marginTop: 7,
-    lineHeight: 20,
-  },
-
-  created: {
-    color: "#94A3B8",
-    fontSize: 12,
-    marginTop: 12,
-  },
-
-  emptyContainer: {
-    flexGrow: 1,
-    justifyContent: "center",
-  },
-
-  emptyBox: {
-    alignItems: "center",
-    padding: 25,
-  },
-
-  emptyIcon: {
-    width: 55,
-    height: 55,
-    borderRadius: 18,
-    backgroundColor: "#E2E8F0",
-    textAlign: "center",
-    textAlignVertical: "center",
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#475569",
-    marginBottom: 15,
-  },
-
-  emptyTitle: {
-    fontSize: 19,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-
-  emptyText: {
-    textAlign: "center",
-    color: "#64748B",
-    marginTop: 6,
-    lineHeight: 20,
-  },
-
-  emptyButton: {
-    backgroundColor: "#111827",
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+  input: {
+    minHeight: 52,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
     borderRadius: 12,
-    marginTop: 18,
+    paddingHorizontal: 14,
+    backgroundColor: "#F8FAFC",
+    color: "#0F172A",
+    marginBottom: 18,
   },
 
-  emptyButtonText: {
+  textarea: {
+    height: 130,
+    paddingTop: 14,
+  },
+
+  button: {
+    height: 53,
+    backgroundColor: "#111827",
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  disabled: {
+    opacity: 0.6,
+  },
+
+  buttonText: {
     color: "#fff",
-    fontWeight: "700",
-  },
-
-  empty: {
-    textAlign: "center",
-    color: "#64748B",
-    marginTop: 30,
+    fontSize: 16,
+    fontWeight: "800",
   },
 });

@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useContext,
   useState,
 } from "react";
@@ -6,225 +7,239 @@ import React, {
 import {
   View,
   Text,
-  TextInput,
   Pressable,
   StyleSheet,
   Alert,
-  Keyboard,
-  TouchableWithoutFeedback,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
+  RefreshControl,
 } from "react-native";
+
+import { useFocusEffect } from "@react-navigation/native";
 
 import { AuthContext } from "../context/authcontext";
 
-export default function SignupScreen({
-  navigation,
-}) {
-  const { signup } =
-    useContext(AuthContext);
+import { apiRequest } from "../services/api";
 
-  const [name, setName] =
-    useState("");
+export default function HomeScreen({ navigation }) {
+  const { user, token, logout } = useContext(AuthContext);
 
-  const [email, setEmail] =
-    useState("");
+  const [projectCount, setProjectCount] = useState(null);
+  const [openIssueCount, setOpenIssueCount] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
 
-  const [password, setPassword] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const handleSignup = async () => {
-    Keyboard.dismiss();
-
-    if (
-      !name.trim() ||
-      !email.trim() ||
-      !password
-    ) {
-      Alert.alert(
-        "Missing information",
-        "Please complete all fields."
-      );
-      return;
-    }
-
-    if (name.trim().length < 2) {
-      Alert.alert(
-        "Invalid name",
-        "Name must be at least 2 characters."
-      );
-      return;
-    }
-
-    if (!email.includes("@")) {
-      Alert.alert(
-        "Invalid email",
-        "Please enter a valid email address."
-      );
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert(
-        "Weak password",
-        "Password must be at least 6 characters."
-      );
-      return;
-    }
-
+  const loadSummary = async (showLoader = true) => {
     try {
-      setLoading(true);
+      if (showLoader) {
+        setLoading(true);
+      }
 
-      await signup(
-        name.trim(),
-        email.trim(),
-        password
+      setError("");
+
+      const projectsData = await apiRequest(
+        "/projects",
+        "GET",
+        null,
+        token
       );
 
-      Alert.alert(
-        "Account created",
-        "Your account has been created successfully.",
-        [
-          {
-            text: "Continue",
-            onPress: () =>
-              navigation.navigate(
-                "Login"
-              ),
-          },
-        ]
+      const projects = projectsData.projects || [];
+
+      setProjectCount(projects.length);
+
+      const issuesData = await apiRequest(
+        "/issues?status=Open",
+        "GET",
+        null,
+        token
       );
-    } catch (error) {
-      Alert.alert(
-        "Signup failed",
-        error.message
+
+      setOpenIssueCount(
+        (issuesData.issues || []).length
+      );
+    } catch (err) {
+      setError(
+        err.message || "Unable to load your dashboard."
       );
     } finally {
       setLoading(false);
     }
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      loadSummary();
+    }, [token])
+  );
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadSummary(false);
+    setRefreshing(false);
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to logout?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: logout,
+        },
+      ]
+    );
+  };
+
   return (
-    <TouchableWithoutFeedback
-      onPress={Keyboard.dismiss}
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+        />
+      }
     >
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={
-          Platform.OS === "ios"
-            ? "padding"
-            : undefined
-        }
-      >
-        <ScrollView
-          contentContainerStyle={
-            styles.content
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.greeting}>
+            Welcome back,
+          </Text>
+
+          <Text style={styles.name}>
+            {user?.name || "there"}
+          </Text>
+        </View>
+
+        <Pressable
+          style={styles.avatar}
+          onPress={() =>
+            navigation.navigate("Profile")
           }
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
         >
-          <Pressable
-            onPress={() =>
-              navigation.goBack()
-            }
-          >
-            <Text style={styles.back}>
-              ← Back
-            </Text>
-          </Pressable>
-
-          <Text style={styles.title}>
-            Create Account
+          <Text style={styles.avatarText}>
+            {(user?.name || "U")
+              .charAt(0)
+              .toUpperCase()}
           </Text>
+        </Pressable>
+      </View>
 
-          <Text style={styles.subtitle}>
-            Join your project team and start
-            tracking issues.
-          </Text>
-
-          <View style={styles.card}>
-            <Text style={styles.label}>
-              Full Name
+      {loading ? (
+        <View style={styles.statsLoading}>
+          <ActivityIndicator
+            size="small"
+            color="#111827"
+          />
+        </View>
+      ) : error ? (
+        <Text style={styles.errorText}>
+          {error}
+        </Text>
+      ) : (
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>
+              {projectCount ?? "-"}
             </Text>
 
-            <TextInput
-              placeholder="Your name"
-              placeholderTextColor="#94A3B8"
-              value={name}
-              onChangeText={setName}
-              style={styles.input}
-            />
-
-            <Text style={styles.label}>
-              Email
+            <Text style={styles.statLabel}>
+              Projects
             </Text>
-
-            <TextInput
-              placeholder="you@example.com"
-              placeholderTextColor="#94A3B8"
-              value={email}
-              onChangeText={setEmail}
-              style={styles.input}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-
-            <Text style={styles.label}>
-              Password
-            </Text>
-
-            <TextInput
-              placeholder="At least 6 characters"
-              placeholderTextColor="#94A3B8"
-              value={password}
-              onChangeText={setPassword}
-              style={styles.input}
-              secureTextEntry
-            />
-
-            <Pressable
-              style={[
-                styles.button,
-                loading &&
-                  styles.disabled,
-              ]}
-              onPress={handleSignup}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>
-                  Create Account
-                </Text>
-              )}
-            </Pressable>
           </View>
 
-          <Pressable
-            onPress={() =>
-              navigation.navigate(
-                "Login"
-              )
-            }
-          >
-            <Text style={styles.loginText}>
-              Already have an account?{" "}
-              <Text
-                style={styles.loginBold}
-              >
-                Sign in
-              </Text>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>
+              {openIssueCount ?? "-"}
             </Text>
-          </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </TouchableWithoutFeedback>
+
+            <Text style={styles.statLabel}>
+              Open Issues
+            </Text>
+          </View>
+        </View>
+      )}
+
+      <Text style={styles.sectionTitle}>
+        Quick Actions
+      </Text>
+
+      <Pressable
+        style={styles.action}
+        onPress={() =>
+          navigation.navigate("Projects")
+        }
+      >
+        <View>
+          <Text style={styles.actionTitle}>
+            My Projects
+          </Text>
+
+          <Text style={styles.actionText}>
+            View, create and manage your projects.
+          </Text>
+        </View>
+
+        <Text style={styles.arrow}>→</Text>
+      </Pressable>
+
+      <Pressable
+        style={styles.action}
+        onPress={() =>
+          navigation.navigate("CreateProject")
+        }
+      >
+        <View>
+          <Text style={styles.actionTitle}>
+            New Project
+          </Text>
+
+          <Text style={styles.actionText}>
+            Start tracking issues on a new project.
+          </Text>
+        </View>
+
+        <Text style={styles.arrow}>+</Text>
+      </Pressable>
+
+      <Pressable
+        style={styles.action}
+        onPress={() =>
+          navigation.navigate("Profile")
+        }
+      >
+        <View>
+          <Text style={styles.actionTitle}>
+            My Profile
+          </Text>
+
+          <Text style={styles.actionText}>
+            View your account details.
+          </Text>
+        </View>
+
+        <Text style={styles.arrow}>→</Text>
+      </Pressable>
+
+      <Pressable
+        style={styles.logout}
+        onPress={handleLogout}
+      >
+        <Text style={styles.logoutText}>
+          Logout
+        </Text>
+      </Pressable>
+    </ScrollView>
   );
 }
 
@@ -235,81 +250,128 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    flexGrow: 1,
-    justifyContent: "center",
-    padding: 24,
+    padding: 20,
+    paddingBottom: 40,
   },
 
-  back: {
-    color: "#475569",
-    fontWeight: "700",
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 22,
+  },
+
+  greeting: {
+    color: "#64748B",
+    fontSize: 14,
+  },
+
+  name: {
+    color: "#0F172A",
+    fontSize: 26,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: "#111827",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  avatarText: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+
+  statsLoading: {
+    paddingVertical: 20,
+    alignItems: "center",
+  },
+
+  errorText: {
+    color: "#DC2626",
+    marginBottom: 15,
+  },
+
+  statsRow: {
+    flexDirection: "row",
     marginBottom: 25,
   },
 
-  title: {
-    fontSize: 30,
+  statCard: {
+    flex: 1,
+    backgroundColor: "#111827",
+    borderRadius: 18,
+    padding: 18,
+    marginRight: 10,
+  },
+
+  statValue: {
+    color: "#fff",
+    fontSize: 28,
+    fontWeight: "800",
+  },
+
+  statLabel: {
+    color: "#CBD5E1",
+    fontSize: 13,
+    marginTop: 4,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 12,
+  },
+
+  action: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    elevation: 2,
+  },
+
+  actionTitle: {
+    fontSize: 16,
     fontWeight: "800",
     color: "#0F172A",
   },
 
-  subtitle: {
+  actionText: {
     color: "#64748B",
-    marginTop: 8,
-    marginBottom: 25,
-    fontSize: 15,
-    lineHeight: 21,
-  },
-
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 22,
-    elevation: 3,
-  },
-
-  label: {
     fontSize: 13,
-    fontWeight: "700",
-    color: "#334155",
-    marginBottom: 7,
+    lineHeight: 19,
+    marginTop: 4,
+    maxWidth: 260,
   },
 
-  input: {
+  arrow: {
+    fontSize: 23,
+    color: "#64748B",
+  },
+
+  logout: {
     height: 52,
+    borderRadius: 13,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    backgroundColor: "#F8FAFC",
-    marginBottom: 18,
-  },
-
-  button: {
-    height: 52,
-    borderRadius: 12,
-    backgroundColor: "#111827",
+    borderColor: "#FECACA",
     justifyContent: "center",
     alignItems: "center",
+    marginTop: 10,
   },
 
-  disabled: {
-    opacity: 0.6,
-  },
-
-  buttonText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 16,
-  },
-
-  loginText: {
-    textAlign: "center",
-    color: "#64748B",
-    marginTop: 22,
-  },
-
-  loginBold: {
-    color: "#111827",
+  logoutText: {
+    color: "#DC2626",
     fontWeight: "800",
   },
 });
