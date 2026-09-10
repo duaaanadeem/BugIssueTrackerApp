@@ -5,14 +5,14 @@ const createProject = async (req, res) => {
   try {
     const { name, description, members } = req.body;
 
-    if (!name) {
+    if (!name || !name.trim()) {
       return res.status(400).json({
         success: false,
         message: "Project name is required",
       });
     }
 
-    if (!description) {
+    if (!description || !description.trim()) {
       return res.status(400).json({
         success: false,
         message: "Project description is required",
@@ -20,16 +20,20 @@ const createProject = async (req, res) => {
     }
 
     const project = await Project.create({
-      name,
-      description,
+      name: name.trim(),
+      description: description.trim(),
       members: members || [],
       createdBy: req.user.userId,
     });
 
+    const populatedProject = await Project.findById(project._id)
+      .populate("createdBy", "name email")
+      .populate("members", "name email");
+
     res.status(201).json({
       success: true,
       message: "Project created successfully",
-      project,
+      project: populatedProject,
     });
   } catch (error) {
     res.status(500).json({
@@ -40,12 +44,15 @@ const createProject = async (req, res) => {
   }
 };
 
-// Get All Projects
+// Get Only Logged-in User's Projects
 const getProjects = async (req, res) => {
   try {
-    const projects = await Project.find()
+    const projects = await Project.find({
+      createdBy: req.user.userId,
+    })
       .populate("createdBy", "name email")
-      .populate("members", "name email");
+      .populate("members", "name email")
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -64,7 +71,10 @@ const getProjects = async (req, res) => {
 // Get Single Project
 const getProjectById = async (req, res) => {
   try {
-    const project = await Project.findById(req.params.id)
+    const project = await Project.findOne({
+      _id: req.params.id,
+      createdBy: req.user.userId,
+    })
       .populate("createdBy", "name email")
       .populate("members", "name email");
 
@@ -93,7 +103,10 @@ const updateProject = async (req, res) => {
   try {
     const { name, description, members } = req.body;
 
-    const project = await Project.findById(req.params.id);
+    const project = await Project.findOne({
+      _id: req.params.id,
+      createdBy: req.user.userId,
+    });
 
     if (!project) {
       return res.status(404).json({
@@ -103,11 +116,25 @@ const updateProject = async (req, res) => {
     }
 
     if (name !== undefined) {
-      project.name = name;
+      if (!name.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Project name cannot be empty",
+        });
+      }
+
+      project.name = name.trim();
     }
 
     if (description !== undefined) {
-      project.description = description;
+      if (!description.trim()) {
+        return res.status(400).json({
+          success: false,
+          message: "Project description cannot be empty",
+        });
+      }
+
+      project.description = description.trim();
     }
 
     if (members !== undefined) {
@@ -116,10 +143,14 @@ const updateProject = async (req, res) => {
 
     await project.save();
 
+    const updatedProject = await Project.findById(project._id)
+      .populate("createdBy", "name email")
+      .populate("members", "name email");
+
     res.status(200).json({
       success: true,
       message: "Project updated successfully",
-      project,
+      project: updatedProject,
     });
   } catch (error) {
     res.status(500).json({
@@ -133,7 +164,10 @@ const updateProject = async (req, res) => {
 // Delete Project
 const deleteProject = async (req, res) => {
   try {
-    const project = await Project.findById(req.params.id);
+    const project = await Project.findOne({
+      _id: req.params.id,
+      createdBy: req.user.userId,
+    });
 
     if (!project) {
       return res.status(404).json({
