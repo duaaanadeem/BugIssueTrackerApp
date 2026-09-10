@@ -1,10 +1,15 @@
 const Project = require("../models/project");
+const User = require("../models/user");
 
-// Create Project
+// ==================================================
+// CREATE PROJECT
+// ==================================================
+
 const createProject = async (req, res) => {
   try {
     const { name, description, members } = req.body;
 
+    // Validate name
     if (!name || !name.trim()) {
       return res.status(400).json({
         success: false,
@@ -12,6 +17,7 @@ const createProject = async (req, res) => {
       });
     }
 
+    // Validate description
     if (!description || !description.trim()) {
       return res.status(400).json({
         success: false,
@@ -19,14 +25,46 @@ const createProject = async (req, res) => {
       });
     }
 
+    // Validate members
+    let projectMembers = [];
+
+    if (members !== undefined) {
+      if (!Array.isArray(members)) {
+        return res.status(400).json({
+          success: false,
+          message: "Members must be an array",
+        });
+      }
+
+      projectMembers = members;
+    }
+
+    // Check that all members exist
+    if (projectMembers.length > 0) {
+      const users = await User.find({
+        _id: { $in: projectMembers },
+      }).select("_id");
+
+      if (users.length !== projectMembers.length) {
+        return res.status(400).json({
+          success: false,
+          message: "One or more members were not found",
+        });
+      }
+    }
+
+    // Create project
     const project = await Project.create({
       name: name.trim(),
       description: description.trim(),
-      members: members || [],
+      members: projectMembers,
       createdBy: req.user.userId,
     });
 
-    const populatedProject = await Project.findById(project._id)
+    // Populate project
+    const populatedProject = await Project.findById(
+      project._id
+    )
       .populate("createdBy", "name email")
       .populate("members", "name email");
 
@@ -44,11 +82,22 @@ const createProject = async (req, res) => {
   }
 };
 
-// Get Only Logged-in User's Projects
+// ==================================================
+// GET PROJECTS
+// ==================================================
+// Shows projects where:
+// 1. Logged-in user is the creator
+// OR
+// 2. Logged-in user is a member
+// ==================================================
+
 const getProjects = async (req, res) => {
   try {
     const projects = await Project.find({
-      createdBy: req.user.userId,
+      $or: [
+        { createdBy: req.user.userId },
+        { members: req.user.userId },
+      ],
     })
       .populate("createdBy", "name email")
       .populate("members", "name email")
@@ -68,12 +117,18 @@ const getProjects = async (req, res) => {
   }
 };
 
-// Get Single Project
+// ==================================================
+// GET SINGLE PROJECT
+// ==================================================
+
 const getProjectById = async (req, res) => {
   try {
     const project = await Project.findOne({
       _id: req.params.id,
-      createdBy: req.user.userId,
+      $or: [
+        { createdBy: req.user.userId },
+        { members: req.user.userId },
+      ],
     })
       .populate("createdBy", "name email")
       .populate("members", "name email");
@@ -81,7 +136,7 @@ const getProjectById = async (req, res) => {
     if (!project) {
       return res.status(404).json({
         success: false,
-        message: "Project not found",
+        message: "Project not found or access denied",
       });
     }
 
@@ -98,11 +153,17 @@ const getProjectById = async (req, res) => {
   }
 };
 
-// Update Project
+// ==================================================
+// UPDATE PROJECT
+// ==================================================
+// Only the project creator can update it.
+// ==================================================
+
 const updateProject = async (req, res) => {
   try {
     const { name, description, members } = req.body;
 
+    // Find project owned by logged-in user
     const project = await Project.findOne({
       _id: req.params.id,
       createdBy: req.user.userId,
@@ -111,10 +172,12 @@ const updateProject = async (req, res) => {
     if (!project) {
       return res.status(404).json({
         success: false,
-        message: "Project not found",
+        message:
+          "Project not found or you do not have permission to update it",
       });
     }
 
+    // Update name
     if (name !== undefined) {
       if (!name.trim()) {
         return res.status(400).json({
@@ -126,24 +189,52 @@ const updateProject = async (req, res) => {
       project.name = name.trim();
     }
 
+    // Update description
     if (description !== undefined) {
       if (!description.trim()) {
         return res.status(400).json({
           success: false,
-          message: "Project description cannot be empty",
+          message:
+            "Project description cannot be empty",
         });
       }
 
       project.description = description.trim();
     }
 
+    // Update members
     if (members !== undefined) {
+      if (!Array.isArray(members)) {
+        return res.status(400).json({
+          success: false,
+          message: "Members must be an array",
+        });
+      }
+
+      // Check that all members exist
+      if (members.length > 0) {
+        const users = await User.find({
+          _id: { $in: members },
+        }).select("_id");
+
+        if (users.length !== members.length) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "One or more members were not found",
+          });
+        }
+      }
+
       project.members = members;
     }
 
     await project.save();
 
-    const updatedProject = await Project.findById(project._id)
+    // Populate updated project
+    const updatedProject = await Project.findById(
+      project._id
+    )
       .populate("createdBy", "name email")
       .populate("members", "name email");
 
@@ -161,7 +252,12 @@ const updateProject = async (req, res) => {
   }
 };
 
-// Delete Project
+// ==================================================
+// DELETE PROJECT
+// ==================================================
+// Only the project creator can delete it.
+// ==================================================
+
 const deleteProject = async (req, res) => {
   try {
     const project = await Project.findOne({
@@ -172,7 +268,8 @@ const deleteProject = async (req, res) => {
     if (!project) {
       return res.status(404).json({
         success: false,
-        message: "Project not found",
+        message:
+          "Project not found or you do not have permission to delete it",
       });
     }
 
@@ -190,6 +287,10 @@ const deleteProject = async (req, res) => {
     });
   }
 };
+
+// ==================================================
+// EXPORTS
+// ==================================================
 
 module.exports = {
   createProject,

@@ -1,9 +1,57 @@
 const Issue = require("../models/issue");
+const Project = require("../models/project");
 const Comment = require("../models/comment");
 const IssueHistory = require("../models/issuehistory");
 const User = require("../models/user");
 
-// Create Issue
+// --------------------------------------------------
+// Helper: Get project if user has access
+// --------------------------------------------------
+
+const getAccessibleProject = async (projectId, userId) => {
+  return await Project.findOne({
+    _id: projectId,
+    $or: [
+      { createdBy: userId },
+      { members: userId },
+    ],
+  });
+};
+
+// --------------------------------------------------
+// Helper: Check whether user belongs to project
+// --------------------------------------------------
+
+const isProjectMember = (project, userId) => {
+  const isOwner =
+    String(project.createdBy) === String(userId);
+
+  const isMember = project.members.some(
+    (memberId) => String(memberId) === String(userId)
+  );
+
+  return isOwner || isMember;
+};
+
+// --------------------------------------------------
+// Helper: Check assigned user belongs to project
+// --------------------------------------------------
+
+const isUserInProject = (project, userId) => {
+  const isOwner =
+    String(project.createdBy) === String(userId);
+
+  const isMember = project.members.some(
+    (memberId) => String(memberId) === String(userId)
+  );
+
+  return isOwner || isMember;
+};
+
+// ==================================================
+// CREATE ISSUE
+// ==================================================
+
 const createIssue = async (req, res) => {
   try {
     const {
@@ -16,27 +64,32 @@ const createIssue = async (req, res) => {
       assignedTo,
     } = req.body;
 
+    // Basic validation
     if (!projectId || !title || !description) {
       return res.status(400).json({
         success: false,
-        message: "Project ID, title and description are required",
+        message:
+          "Project ID, title and description are required",
       });
     }
 
     if (title.trim().length < 3) {
       return res.status(400).json({
         success: false,
-        message: "Issue title must be at least 3 characters",
+        message:
+          "Issue title must be at least 3 characters",
       });
     }
 
     if (description.trim().length < 5) {
       return res.status(400).json({
         success: false,
-        message: "Issue description must be at least 5 characters",
+        message:
+          "Issue description must be at least 5 characters",
       });
     }
 
+    // Allowed values
     const allowedPriorities = [
       "Low",
       "Medium",
@@ -71,8 +124,25 @@ const createIssue = async (req, res) => {
       });
     }
 
+    // Check project access
+    const project = await getAccessibleProject(
+      projectId,
+      req.user.userId
+    );
+
+    if (!project) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You do not have access to this project",
+      });
+    }
+
+    // Check assigned user
     if (assignedTo) {
-      const assignedUser = await User.findById(assignedTo);
+      const assignedUser = await User.findById(
+        assignedTo
+      );
 
       if (!assignedUser) {
         return res.status(400).json({
@@ -80,8 +150,18 @@ const createIssue = async (req, res) => {
           message: "Assigned user not found",
         });
       }
+
+      // Assigned user must belong to project
+      if (!isUserInProject(project, assignedTo)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Assigned user must be a member of this project",
+        });
+      }
     }
 
+    // Create issue
     const issue = await Issue.create({
       projectId,
       title: title.trim(),
@@ -95,7 +175,10 @@ const createIssue = async (req, res) => {
       createdBy: req.user.userId,
     });
 
-    const populatedIssue = await Issue.findById(issue._id)
+    // Populate response
+    const populatedIssue = await Issue.findById(
+      issue._id
+    )
       .populate("createdBy", "name email")
       .populate("assignedTo", "name email")
       .populate("projectId", "name");
@@ -114,23 +197,60 @@ const createIssue = async (req, res) => {
   }
 };
 
-// Get All Issues
+// ==================================================
+// GET ALL ISSUES
+// ==================================================
+
 const getIssues = async (req, res) => {
   try {
-    const filter = {};
+    // Find projects accessible to logged-in user
+    const accessibleProjects = await Project.find({
+      $or: [
+        { createdBy: req.user.userId },
+        { members: req.user.userId },
+      ],
+    }).select("_id");
 
+    const projectIds = accessibleProjects.map(
+      (project) => project._id
+    );
+
+    // Only issues belonging to accessible projects
+    const filter = {
+      projectId: {
+        $in: projectIds,
+      },
+    };
+
+    // Filter by project
     if (req.query.projectId) {
+      const project = await getAccessibleProject(
+        req.query.projectId,
+        req.user.userId
+      );
+
+      if (!project) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "You do not have access to this project",
+        });
+      }
+
       filter.projectId = req.query.projectId;
     }
 
+    // Filter by status
     if (req.query.status) {
       filter.status = req.query.status;
     }
 
+    // Filter by priority
     if (req.query.priority) {
       filter.priority = req.query.priority;
     }
 
+    // Search by title
     if (req.query.search) {
       filter.title = {
         $regex: req.query.search,
@@ -158,13 +278,13 @@ const getIssues = async (req, res) => {
   }
 };
 
-// Get Single Issue
+// ==================================================
+// GET SINGLE ISSUE
+// ==================================================
+
 const getIssueById = async (req, res) => {
   try {
-    const issue = await Issue.findById(req.params.id)
-      .populate("createdBy", "name email")
-      .populate("assignedTo", "name email")
-      .populate("projectId", "name");
+    const issue = await Issue.findById(req.params.id);
 
     if (!issue) {
       return res.status(404).json({
@@ -173,9 +293,30 @@ const getIssueById = async (req, res) => {
       });
     }
 
+    // Check project access
+    const project = await getAccessibleProject(
+      issue.projectId,
+      req.user.userId
+    );
+
+    if (!project) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You do not have access to this issue",
+      });
+    }
+
+    const populatedIssue = await Issue.findById(
+      issue._id
+    )
+      .populate("createdBy", "name email")
+      .populate("assignedTo", "name email")
+      .populate("projectId", "name");
+
     res.status(200).json({
       success: true,
-      issue,
+      issue: populatedIssue,
     });
   } catch (error) {
     res.status(500).json({
@@ -186,7 +327,10 @@ const getIssueById = async (req, res) => {
   }
 };
 
-// Update Issue
+// ==================================================
+// UPDATE ISSUE
+// ==================================================
+
 const updateIssue = async (req, res) => {
   try {
     const {
@@ -207,10 +351,25 @@ const updateIssue = async (req, res) => {
       });
     }
 
+    // Check project access
+    const project = await getAccessibleProject(
+      issue.projectId,
+      req.user.userId
+    );
+
+    if (!project) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You do not have access to this issue",
+      });
+    }
+
     const oldStatus = issue.status;
     const oldPriority = issue.priority;
     const oldAssignedTo = issue.assignedTo;
 
+    // Validate title
     if (title !== undefined) {
       if (!title.trim()) {
         return res.status(400).json({
@@ -219,9 +378,18 @@ const updateIssue = async (req, res) => {
         });
       }
 
+      if (title.trim().length < 3) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Issue title must be at least 3 characters",
+        });
+      }
+
       issue.title = title.trim();
     }
 
+    // Validate description
     if (description !== undefined) {
       if (!description.trim()) {
         return res.status(400).json({
@@ -230,23 +398,63 @@ const updateIssue = async (req, res) => {
         });
       }
 
+      if (description.trim().length < 5) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Issue description must be at least 5 characters",
+        });
+      }
+
       issue.description = description.trim();
     }
 
+    // Screenshots
     if (screenshots !== undefined) {
       issue.screenshots = Array.isArray(screenshots)
         ? screenshots
         : [];
     }
 
+    // Priority
     if (priority !== undefined) {
+      const allowedPriorities = [
+        "Low",
+        "Medium",
+        "High",
+        "Critical",
+      ];
+
+      if (!allowedPriorities.includes(priority)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid priority",
+        });
+      }
+
       issue.priority = priority;
     }
 
+    // Status
     if (status !== undefined) {
+      const allowedStatuses = [
+        "Open",
+        "In Progress",
+        "Resolved",
+        "Closed",
+      ];
+
+      if (!allowedStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid status",
+        });
+      }
+
       issue.status = status;
     }
 
+    // Assigned user
     if (assignedTo !== undefined) {
       if (assignedTo) {
         const assignedUser = await User.findById(
@@ -259,12 +467,25 @@ const updateIssue = async (req, res) => {
             message: "Assigned user not found",
           });
         }
+
+        // Must belong to project
+        if (!isUserInProject(project, assignedTo)) {
+          return res.status(400).json({
+            success: false,
+            message:
+              "Assigned user must be a member of this project",
+          });
+        }
       }
 
       issue.assignedTo = assignedTo || null;
     }
 
     await issue.save();
+
+    // --------------------------------------------------
+    // Create history for status change
+    // --------------------------------------------------
 
     if (oldStatus !== issue.status) {
       await IssueHistory.create({
@@ -276,6 +497,10 @@ const updateIssue = async (req, res) => {
       });
     }
 
+    // --------------------------------------------------
+    // Create history for priority change
+    // --------------------------------------------------
+
     if (oldPriority !== issue.priority) {
       await IssueHistory.create({
         issueId: issue._id,
@@ -285,6 +510,10 @@ const updateIssue = async (req, res) => {
         newValue: issue.priority,
       });
     }
+
+    // --------------------------------------------------
+    // Create history for assignment change
+    // --------------------------------------------------
 
     const oldAssignedId = oldAssignedTo
       ? String(oldAssignedTo)
@@ -299,12 +528,17 @@ const updateIssue = async (req, res) => {
         issueId: issue._id,
         userId: req.user.userId,
         action: "User assigned",
-        oldValue: oldAssignedId || "Unassigned",
-        newValue: newAssignedId || "Unassigned",
+        oldValue:
+          oldAssignedId || "Unassigned",
+        newValue:
+          newAssignedId || "Unassigned",
       });
     }
 
-    const updatedIssue = await Issue.findById(issue._id)
+    // Get updated issue
+    const updatedIssue = await Issue.findById(
+      issue._id
+    )
       .populate("createdBy", "name email")
       .populate("assignedTo", "name email")
       .populate("projectId", "name");
@@ -323,7 +557,10 @@ const updateIssue = async (req, res) => {
   }
 };
 
-// Delete Issue
+// ==================================================
+// DELETE ISSUE
+// ==================================================
+
 const deleteIssue = async (req, res) => {
   try {
     const issue = await Issue.findById(req.params.id);
@@ -335,12 +572,28 @@ const deleteIssue = async (req, res) => {
       });
     }
 
+    // Check project access
+    const project = await getAccessibleProject(
+      issue.projectId,
+      req.user.userId
+    );
+
+    if (!project) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You do not have permission to delete this issue",
+      });
+    }
+
     await Issue.findByIdAndDelete(req.params.id);
 
+    // Delete comments
     await Comment.deleteMany({
       issueId: req.params.id,
     });
 
+    // Delete history
     await IssueHistory.deleteMany({
       issueId: req.params.id,
     });
@@ -358,7 +611,10 @@ const deleteIssue = async (req, res) => {
   }
 };
 
-// Add Comment
+// ==================================================
+// ADD COMMENT
+// ==================================================
+
 const addComment = async (req, res) => {
   try {
     const { issueId, text } = req.body;
@@ -366,7 +622,8 @@ const addComment = async (req, res) => {
     if (!issueId || !text || !text.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Issue ID and comment text are required",
+        message:
+          "Issue ID and comment text are required",
       });
     }
 
@@ -379,6 +636,20 @@ const addComment = async (req, res) => {
       });
     }
 
+    // Check project access
+    const project = await getAccessibleProject(
+      issue.projectId,
+      req.user.userId
+    );
+
+    if (!project) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You do not have access to this issue",
+      });
+    }
+
     const comment = await Comment.create({
       issueId,
       userId: req.user.userId,
@@ -386,10 +657,9 @@ const addComment = async (req, res) => {
     });
 
     const populatedComment =
-      await Comment.findById(comment._id).populate(
-        "userId",
-        "name email"
-      );
+      await Comment.findById(
+        comment._id
+      ).populate("userId", "name email");
 
     res.status(201).json({
       success: true,
@@ -405,9 +675,37 @@ const addComment = async (req, res) => {
   }
 };
 
-// Get Comments
+// ==================================================
+// GET COMMENTS
+// ==================================================
+
 const getComments = async (req, res) => {
   try {
+    const issue = await Issue.findById(
+      req.params.issueId
+    );
+
+    if (!issue) {
+      return res.status(404).json({
+        success: false,
+        message: "Issue not found",
+      });
+    }
+
+    // Check project access
+    const project = await getAccessibleProject(
+      issue.projectId,
+      req.user.userId
+    );
+
+    if (!project) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You do not have access to this issue",
+      });
+    }
+
     const comments = await Comment.find({
       issueId: req.params.issueId,
     })
@@ -428,9 +726,37 @@ const getComments = async (req, res) => {
   }
 };
 
-// Get Issue History
+// ==================================================
+// GET ISSUE HISTORY
+// ==================================================
+
 const getIssueHistory = async (req, res) => {
   try {
+    const issue = await Issue.findById(
+      req.params.issueId
+    );
+
+    if (!issue) {
+      return res.status(404).json({
+        success: false,
+        message: "Issue not found",
+      });
+    }
+
+    // Check project access
+    const project = await getAccessibleProject(
+      issue.projectId,
+      req.user.userId
+    );
+
+    if (!project) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "You do not have access to this issue",
+      });
+    }
+
     const history = await IssueHistory.find({
       issueId: req.params.issueId,
     })
@@ -450,6 +776,10 @@ const getIssueHistory = async (req, res) => {
     });
   }
 };
+
+// ==================================================
+// EXPORTS
+// ==================================================
 
 module.exports = {
   createIssue,
