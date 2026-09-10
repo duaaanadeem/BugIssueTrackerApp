@@ -136,6 +136,7 @@ const login = async (req, res) => {
   }
 };
 
+
 // Get users for issue assignment
 const getUsers = async (req, res) => {
   try {
@@ -157,8 +158,49 @@ const getUsers = async (req, res) => {
   }
 };
 
+
+// Search registered users by name
+const searchUserByName = async (req, res) => {
+  try {
+    const name = req.query.name?.trim();
+
+    if (!name) {
+      return res.status(400).json({
+        success: false,
+        message: "Name is required",
+      });
+    }
+
+    const users = await User.find({
+      name: {
+        $regex: name,
+        $options: "i",
+      },
+    })
+      .select("_id name email role")
+      .sort({ name: 1 })
+      .limit(10);
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      users,
+    });
+  } catch (error) {
+    console.error("Search users error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+
 module.exports = {
   signup,
   login,
   getUsers,
+  searchUserByName,
 };
