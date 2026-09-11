@@ -16,15 +16,7 @@ import {
 } from "react-native";
 
 import { AuthContext } from "../context/authcontext";
-
 import { apiRequest } from "../services/api";
-
-const statuses = [
-  "Open",
-  "In Progress",
-  "Resolved",
-  "Closed",
-];
 
 const priorities = [
   "Low",
@@ -33,27 +25,29 @@ const priorities = [
   "Critical",
 ];
 
+const statuses = [
+  "Open",
+  "In Progress",
+  "Resolved",
+  "Closed",
+];
+
 export default function IssueDetailsScreen({
   route,
   navigation,
 }) {
-  const { token } =
-    useContext(AuthContext);
+  const { token } = useContext(AuthContext);
 
-  const { issueId } =
-    route.params;
+  const issueId = route.params?.issueId;
 
-  const [issue, setIssue] =
-    useState(null);
+  const [issue, setIssue] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const [users, setUsers] =
-    useState([]);
+  const [saving, setSaving] = useState(false);
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [saving, setSaving] =
-    useState(false);
+  useEffect(() => {
+    loadIssue();
+  }, [issueId]);
 
   const loadIssue = async () => {
     try {
@@ -69,40 +63,31 @@ export default function IssueDetailsScreen({
       setIssue(data.issue);
     } catch (error) {
       Alert.alert(
-        "Unable to load issue",
-        error.message
+        "Error",
+        error.message || "Unable to load issue."
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const loadUsers = async () => {
-    try {
-      const data = await apiRequest(
-        "/auth/users",
-        "GET",
-        null,
-        token
-      );
+  const projectUsers = issue?.projectId
+    ? [
+        ...(issue.projectId.createdBy
+          ? [issue.projectId.createdBy]
+          : []),
+        ...(issue.projectId.members || []),
+      ].filter(
+        (user, index, self) =>
+          user?._id &&
+          index ===
+            self.findIndex(
+              (item) => item._id === user._id
+            )
+      )
+    : [];
 
-      setUsers(data.users || []);
-    } catch (error) {
-      console.log(
-        "Unable to load users:",
-        error.message
-      );
-    }
-  };
-
-  useEffect(() => {
-    loadIssue();
-    loadUsers();
-  }, [issueId, token]);
-
-  const updateIssue = async (
-    changes
-  ) => {
+  const updateIssue = async (changes) => {
     try {
       setSaving(true);
 
@@ -114,15 +99,60 @@ export default function IssueDetailsScreen({
       );
 
       setIssue(data.issue);
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        error.message || "Unable to update issue."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      "Delete Issue",
+      "Are you sure you want to delete this issue?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: deleteIssue,
+        },
+      ]
+    );
+  };
+
+  const deleteIssue = async () => {
+    try {
+      setSaving(true);
+
+      await apiRequest(
+        `/issues/${issueId}`,
+        "DELETE",
+        null,
+        token
+      );
 
       Alert.alert(
-        "Updated",
-        "Issue updated successfully."
+        "Deleted",
+        "Issue deleted successfully.",
+        [
+          {
+            text: "OK",
+            onPress: () =>
+              navigation.goBack(),
+          },
+        ]
       );
     } catch (error) {
       Alert.alert(
-        "Update failed",
-        error.message
+        "Error",
+        error.message || "Unable to delete issue."
       );
     } finally {
       setSaving(false);
@@ -131,23 +161,19 @@ export default function IssueDetailsScreen({
 
   if (loading) {
     return (
-      <View style={styles.center}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator
           size="large"
           color="#111827"
         />
-
-        <Text style={styles.loading}>
-          Loading issue...
-        </Text>
       </View>
     );
   }
 
   if (!issue) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.error}>
+      <View style={styles.loadingContainer}>
+        <Text style={styles.errorText}>
           Issue not found.
         </Text>
       </View>
@@ -157,273 +183,205 @@ export default function IssueDetailsScreen({
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={
-        styles.content
-      }
+      contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.headerCard}>
-        <View style={styles.badgeRow}>
-          <Text style={styles.issueLabel}>
-            ISSUE
-          </Text>
+      <Text style={styles.title}>
+        {issue.title}
+      </Text>
 
-          <Text style={styles.created}>
-            {issue.createdBy?.name ||
-              "Unknown"}
-          </Text>
-        </View>
+      <Text style={styles.description}>
+        {issue.description}
+      </Text>
 
-        <Text style={styles.title}>
-          {issue.title}
-        </Text>
+      <Text style={styles.label}>
+        Status
+      </Text>
 
-        <Text style={styles.description}>
-          {issue.description}
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>
-          Status
-        </Text>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={
-            false
-          }
-        >
-          {statuses.map((item) => (
-            <Pressable
-              key={item}
-              style={[
-                styles.chip,
-                issue.status === item &&
-                  styles.activeChip,
-              ]}
-              onPress={() =>
-                updateIssue({
-                  status: item,
-                })
-              }
-              disabled={saving}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  issue.status === item &&
-                    styles.activeChipText,
-                ]}
-              >
-                {item}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>
-          Priority
-        </Text>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={
-            false
-          }
-        >
-          {priorities.map((item) => (
-            <Pressable
-              key={item}
-              style={[
-                styles.chip,
-                issue.priority === item &&
-                  styles.activeChip,
-              ]}
-              onPress={() =>
-                updateIssue({
-                  priority: item,
-                })
-              }
-              disabled={saving}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  issue.priority === item &&
-                    styles.activeChipText,
-                ]}
-              >
-                {item}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>
-          Assigned To
-        </Text>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={
-            false
-          }
-        >
+      <View style={styles.chipContainer}>
+        {statuses.map((item) => (
           <Pressable
+            key={item}
             style={[
               styles.chip,
-              !issue.assignedTo &&
-                styles.activeChip,
+              issue.status === item &&
+                styles.selectedChip,
             ]}
             onPress={() =>
               updateIssue({
-                assignedTo: null,
+                status: item,
               })
             }
+            disabled={saving}
           >
             <Text
               style={[
                 styles.chipText,
-                !issue.assignedTo &&
-                  styles.activeChipText,
+                issue.status === item &&
+                  styles.selectedChipText,
               ]}
             >
-              Unassigned
+              {item}
             </Text>
           </Pressable>
+        ))}
+      </View>
 
-          {users.map((user) => (
-            <Pressable
-              key={user._id}
+      <Text style={styles.label}>
+        Priority
+      </Text>
+
+      <View style={styles.chipContainer}>
+        {priorities.map((item) => (
+          <Pressable
+            key={item}
+            style={[
+              styles.chip,
+              issue.priority === item &&
+                styles.selectedChip,
+            ]}
+            onPress={() =>
+              updateIssue({
+                priority: item,
+              })
+            }
+            disabled={saving}
+          >
+            <Text
               style={[
-                styles.chip,
+                styles.chipText,
+                issue.priority === item &&
+                  styles.selectedChipText,
+              ]}
+            >
+              {item}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.label}>
+        Assigned User
+      </Text>
+
+      <View style={styles.assignedBox}>
+        <Pressable
+          style={[
+            styles.assignedChip,
+            !issue.assignedTo &&
+              styles.selectedAssignedChip,
+          ]}
+          onPress={() =>
+            updateIssue({
+              assignedTo: null,
+            })
+          }
+          disabled={saving}
+        >
+          <Text
+            style={[
+              styles.assignedText,
+              !issue.assignedTo &&
+                styles.selectedAssignedText,
+            ]}
+          >
+            Unassigned
+          </Text>
+        </Pressable>
+
+        {projectUsers.map((user) => (
+          <Pressable
+            key={user._id}
+            style={[
+              styles.assignedChip,
+              issue.assignedTo?._id ===
+                user._id &&
+                styles.selectedAssignedChip,
+            ]}
+            onPress={() =>
+              updateIssue({
+                assignedTo: user._id,
+              })
+            }
+            disabled={saving}
+          >
+            <Text
+              style={[
+                styles.assignedText,
                 issue.assignedTo?._id ===
                   user._id &&
-                  styles.activeChip,
+                  styles.selectedAssignedText,
               ]}
-              onPress={() =>
-                updateIssue({
-                  assignedTo: user._id,
-                })
-              }
             >
-              <Text
-                style={[
-                  styles.chipText,
-                  issue.assignedTo?._id ===
-                    user._id &&
-                    styles.activeChipText,
-                ]}
-              >
-                {user.name}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+              {user.name}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
       {issue.screenshots?.length > 0 && (
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>
-            Screenshot
+        <>
+          <Text style={styles.label}>
+            Screenshots
           </Text>
 
-          {issue.screenshots.map(
-            (image, index) => (
-              <Image
-                key={index}
-                source={{
-                  uri: image,
-                }}
-                style={styles.screenshot}
-              />
-            )
-          )}
-        </View>
+          <View style={styles.screenshotContainer}>
+            {issue.screenshots.map(
+              (image, index) => (
+                <Image
+                  key={index}
+                  source={{ uri: image }}
+                  style={styles.screenshot}
+                />
+              )
+            )}
+          </View>
+        </>
       )}
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>
-          Issue Information
-        </Text>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>
-            Project
+      <View style={styles.actionRow}>
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={() =>
+            navigation.navigate(
+              "Comments",
+              {
+                issueId,
+              }
+            )
+          }
+        >
+          <Text style={styles.secondaryButtonText}>
+            Comments
           </Text>
+        </Pressable>
 
-          <Text style={styles.infoValue}>
-            {issue.projectId?.name ||
-              "Unknown"}
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={() =>
+            navigation.navigate(
+              "History",
+              {
+                issueId,
+              }
+            )
+          }
+        >
+          <Text style={styles.secondaryButtonText}>
+            History
           </Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>
-            Created By
-          </Text>
-
-          <Text style={styles.infoValue}>
-            {issue.createdBy?.name ||
-              "Unknown"}
-          </Text>
-        </View>
-
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>
-            Assigned To
-          </Text>
-
-          <Text style={styles.infoValue}>
-            {issue.assignedTo?.name ||
-              "Unassigned"}
-          </Text>
-        </View>
+        </Pressable>
       </View>
 
       <Pressable
-        style={styles.actionButton}
-        onPress={() =>
-          navigation.navigate(
-            "Comments",
-            {
-              issueId,
-            }
-          )
-        }
+        style={styles.deleteButton}
+        onPress={handleDelete}
+        disabled={saving}
       >
-        <Text style={styles.actionText}>
-          View Comments →
+        <Text style={styles.deleteText}>
+          Delete Issue
         </Text>
       </Pressable>
-
-      <Pressable
-        style={styles.actionButton}
-        onPress={() =>
-          navigation.navigate(
-            "History",
-            {
-              issueId,
-            }
-          )
-        }
-      >
-        <Text style={styles.actionText}>
-          View Issue History →
-        </Text>
-      </Pressable>
-
-      {saving && (
-        <ActivityIndicator
-          style={styles.saving}
-          color="#111827"
-        />
-      )}
     </ScrollView>
   );
 }
@@ -435,101 +393,103 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    padding: 16,
-    paddingBottom: 35,
+    padding: 20,
+    paddingTop: 35,
+    paddingBottom: 45,
   },
 
-  center: {
+  loadingContainer: {
     flex: 1,
     backgroundColor: "#F8FAFC",
     justifyContent: "center",
     alignItems: "center",
   },
 
-  loading: {
-    color: "#64748B",
-    marginTop: 10,
-  },
-
-  error: {
-    color: "#DC2626",
-  },
-
-  headerCard: {
-    backgroundColor: "#111827",
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 12,
-  },
-
-  badgeRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  issueLabel: {
-    color: "#CBD5E1",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-
-  created: {
-    color: "#94A3B8",
-    fontSize: 11,
-  },
-
   title: {
-    color: "#fff",
-    fontSize: 25,
+    fontSize: 27,
     fontWeight: "800",
-    marginTop: 15,
+    color: "#0F172A",
+    marginBottom: 12,
   },
 
   description: {
-    color: "#CBD5E1",
-    lineHeight: 21,
-    marginTop: 9,
-  },
-
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 17,
-    padding: 17,
-    marginBottom: 12,
-    elevation: 2,
-  },
-
-  sectionTitle: {
-    color: "#0F172A",
+    color: "#475569",
     fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 25,
+  },
+
+  label: {
+    fontSize: 14,
     fontWeight: "800",
-    marginBottom: 12,
+    color: "#334155",
+    marginBottom: 9,
+    marginTop: 5,
+  },
+
+  chipContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginBottom: 18,
   },
 
   chip: {
-    backgroundColor: "#F8FAFC",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderRadius: 20,
-    marginRight: 7,
+    marginRight: 8,
+    marginBottom: 8,
   },
 
-  activeChip: {
+  selectedChip: {
     backgroundColor: "#111827",
     borderColor: "#111827",
   },
 
   chipText: {
-    color: "#64748B",
-    fontSize: 12,
+    color: "#475569",
     fontWeight: "700",
   },
 
-  activeChipText: {
+  selectedChipText: {
     color: "#fff",
+  },
+
+  assignedBox: {
+    backgroundColor: "#fff",
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 10,
+    marginBottom: 22,
+  },
+
+  assignedChip: {
+    paddingVertical: 12,
+    paddingHorizontal: 13,
+    borderRadius: 11,
+    marginBottom: 7,
+    backgroundColor: "#F8FAFC",
+  },
+
+  selectedAssignedChip: {
+    backgroundColor: "#111827",
+  },
+
+  assignedText: {
+    color: "#334155",
+    fontWeight: "700",
+  },
+
+  selectedAssignedText: {
+    color: "#fff",
+  },
+
+  screenshotContainer: {
+    marginBottom: 22,
   },
 
   screenshot: {
@@ -537,44 +497,47 @@ const styles = StyleSheet.create({
     height: 220,
     borderRadius: 14,
     marginBottom: 10,
+    backgroundColor: "#E2E8F0",
   },
 
-  infoRow: {
+  actionRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
+    marginBottom: 15,
   },
 
-  infoLabel: {
-    color: "#64748B",
-    fontSize: 13,
-  },
-
-  infoValue: {
-    color: "#0F172A",
-    fontWeight: "700",
-    fontSize: 13,
-    maxWidth: "55%",
-    textAlign: "right",
-  },
-
-  actionButton: {
-    height: 52,
-    backgroundColor: "#111827",
+  secondaryButton: {
+    flex: 1,
+    height: 50,
     borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 10,
+    marginRight: 7,
   },
 
-  actionText: {
-    color: "#fff",
+  secondaryButtonText: {
+    color: "#111827",
     fontWeight: "800",
   },
 
-  saving: {
-    marginVertical: 10,
+  deleteButton: {
+    height: 50,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  deleteText: {
+    color: "#DC2626",
+    fontWeight: "800",
+  },
+
+  errorText: {
+    color: "#DC2626",
+    fontSize: 15,
   },
 });

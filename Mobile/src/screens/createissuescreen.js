@@ -13,15 +13,11 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
-  Image,
-  Keyboard,
-  TouchableWithoutFeedback,
 } from "react-native";
 
 import * as ImagePicker from "expo-image-picker";
 
 import { AuthContext } from "../context/authcontext";
-
 import { apiRequest } from "../services/api";
 
 const priorities = [
@@ -42,146 +38,119 @@ export default function CreateIssueScreen({
   route,
   navigation,
 }) {
-  const { token } =
-    useContext(AuthContext);
+  const { token } = useContext(AuthContext);
 
-  const { projectId } =
-    route.params;
+  const projectId = route.params?.projectId;
 
-  const [title, setTitle] =
-    useState("");
+  const [project, setProject] = useState(null);
 
-  const [description, setDescription] =
-    useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState("Medium");
+  const [status, setStatus] = useState("Open");
+  const [assignedTo, setAssignedTo] = useState("");
 
-  const [priority, setPriority] =
-    useState("Medium");
+  const [screenshots, setScreenshots] = useState([]);
 
-  const [status, setStatus] =
-    useState("Open");
-
-  const [users, setUsers] =
-    useState([]);
-
-  const [assignedTo, setAssignedTo] =
-    useState(null);
-
-  const [screenshot, setScreenshot] =
-    useState(null);
-
-  const [loadingUsers, setLoadingUsers] =
-    useState(true);
-
-  const [submitting, setSubmitting] =
-    useState(false);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    const loadUsers = async () => {
-      try {
-        const data = await apiRequest(
-          "/auth/users",
-          "GET",
-          null,
-          token
-        );
+    loadProject();
+  }, [projectId]);
 
-        setUsers(data.users || []);
-      } catch (error) {
-        Alert.alert(
-          "Unable to load users",
-          error.message
-        );
-      } finally {
-        setLoadingUsers(false);
-      }
-    };
+  const loadProject = async () => {
+    try {
+      setLoading(true);
 
-    loadUsers();
-  }, [token]);
+      const data = await apiRequest(
+        `/projects/${projectId}`,
+        "GET",
+        null,
+        token
+      );
 
-  const pickImage = async () => {
+      setProject(data.project);
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        error.message || "Unable to load project."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const projectUsers = project
+    ? [
+        ...(project.createdBy
+          ? [project.createdBy]
+          : []),
+        ...(project.members || []),
+      ].filter(
+        (user, index, self) =>
+          user?._id &&
+          index ===
+            self.findIndex(
+              (item) => item._id === user._id
+            )
+      )
+    : [];
+
+  const pickImages = async () => {
     const permission =
       await ImagePicker.requestMediaLibraryPermissionsAsync();
 
     if (!permission.granted) {
       Alert.alert(
         "Permission required",
-        "Please allow photo library access to attach a screenshot."
+        "Please allow photo library access."
       );
       return;
     }
 
     const result =
-      await ImagePicker.launchImageLibraryAsync(
-        {
-          mediaTypes: ["images"],
-          allowsEditing: true,
-          quality: 0.6,
-          base64: true,
-        }
-      );
+      await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsMultipleSelection: true,
+        quality: 0.7,
+        base64: true,
+      });
 
-    if (
-      !result.canceled &&
-      result.assets?.length
-    ) {
-      const asset = result.assets[0];
-
-      if (!asset.base64) {
-        Alert.alert(
-          "Screenshot error",
-          "The selected image could not be processed."
-        );
-        return;
-      }
-
-      const mimeType =
-        asset.mimeType ||
-        "image/jpeg";
-
-      setScreenshot(
-        `data:${mimeType};base64,${asset.base64}`
-      );
-    }
-  };
-
-  const createIssue = async () => {
-    Keyboard.dismiss();
-
-    if (!title.trim()) {
-      Alert.alert(
-        "Title required",
-        "Please enter an issue title."
-      );
+    if (result.canceled) {
       return;
     }
 
-    if (title.trim().length < 3) {
+    const selected =
+      result.assets
+        ?.filter((asset) => asset.base64)
+        .map(
+          (asset) =>
+            `data:${asset.mimeType || "image/jpeg"};base64,${asset.base64}`
+        ) || [];
+
+    setScreenshots(selected);
+  };
+
+  const createIssue = async () => {
+    if (!title.trim()) {
       Alert.alert(
-        "Invalid title",
-        "Issue title must be at least 3 characters."
+        "Validation",
+        "Please enter an issue title."
       );
       return;
     }
 
     if (!description.trim()) {
       Alert.alert(
-        "Description required",
-        "Please describe the issue."
-      );
-      return;
-    }
-
-    if (description.trim().length < 5) {
-      Alert.alert(
-        "Description too short",
-        "Please provide more details about the issue."
+        "Validation",
+        "Please enter an issue description."
       );
       return;
     }
 
     try {
-      setSubmitting(true);
+      setCreating(true);
 
       await apiRequest(
         "/issues",
@@ -189,25 +158,21 @@ export default function CreateIssueScreen({
         {
           projectId,
           title: title.trim(),
-          description:
-            description.trim(),
-          screenshots: screenshot
-            ? [screenshot]
-            : [],
+          description: description.trim(),
+          screenshots,
           priority,
           status,
-          assignedTo:
-            assignedTo?._id || null,
+          assignedTo: assignedTo || null,
         },
         token
       );
 
       Alert.alert(
-        "Issue reported",
-        "The issue has been created successfully.",
+        "Success",
+        "Issue created successfully.",
         [
           {
-            text: "View Issues",
+            text: "OK",
             onPress: () =>
               navigation.goBack(),
           },
@@ -215,268 +180,207 @@ export default function CreateIssueScreen({
       );
     } catch (error) {
       Alert.alert(
-        "Unable to create issue",
-        error.message
+        "Error",
+        error.message || "Unable to create issue."
       );
     } finally {
-      setSubmitting(false);
+      setCreating(false);
     }
   };
 
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator
+          size="large"
+          color="#111827"
+        />
+      </View>
+    );
+  }
+
   return (
-    <TouchableWithoutFeedback
-      onPress={Keyboard.dismiss}
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={
-          styles.content
-        }
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.title}>
-          Report an issue
-        </Text>
+      <Text style={styles.title}>
+        Report New Issue
+      </Text>
 
-        <Text style={styles.subtitle}>
-          Provide enough detail so your team
-          can understand and resolve it.
-        </Text>
+      <Text style={styles.projectName}>
+        Project: {project?.name || "Project"}
+      </Text>
 
-        <View style={styles.card}>
-          <Text style={styles.label}>
-            Issue Title
-          </Text>
+      <Text style={styles.label}>
+        Issue Title
+      </Text>
 
-          <TextInput
-            placeholder="e.g. Login button not working"
-            placeholderTextColor="#94A3B8"
-            value={title}
-            onChangeText={setTitle}
-            style={styles.input}
-          />
+      <TextInput
+        style={styles.input}
+        placeholder="Enter issue title"
+        placeholderTextColor="#94A3B8"
+        value={title}
+        onChangeText={setTitle}
+      />
 
-          <Text style={styles.label}>
-            Description
-          </Text>
+      <Text style={styles.label}>
+        Description
+      </Text>
 
-          <TextInput
-            placeholder="Describe what happened, expected behavior, and steps to reproduce..."
-            placeholderTextColor="#94A3B8"
-            value={description}
-            onChangeText={setDescription}
-            style={[
-              styles.input,
-              styles.textarea,
-            ]}
-            multiline
-            textAlignVertical="top"
-          />
+      <TextInput
+        style={[
+          styles.input,
+          styles.textArea,
+        ]}
+        placeholder="Describe the issue"
+        placeholderTextColor="#94A3B8"
+        value={description}
+        onChangeText={setDescription}
+        multiline
+        textAlignVertical="top"
+      />
 
-          <Text style={styles.label}>
-            Priority
-          </Text>
+      <Text style={styles.label}>
+        Priority
+      </Text>
 
-          <View style={styles.chips}>
-            {priorities.map((item) => (
-              <Pressable
-                key={item}
-                style={[
-                  styles.chip,
-                  priority === item &&
-                    styles.activeChip,
-                ]}
-                onPress={() =>
-                  setPriority(item)
-                }
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    priority === item &&
-                      styles.activeChipText,
-                  ]}
-                >
-                  {item}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Text style={styles.label}>
-            Status
-          </Text>
-
-          <View style={styles.chips}>
-            {statuses.map((item) => (
-              <Pressable
-                key={item}
-                style={[
-                  styles.chip,
-                  status === item &&
-                    styles.activeChip,
-                ]}
-                onPress={() =>
-                  setStatus(item)
-                }
-              >
-                <Text
-                  style={[
-                    styles.chipText,
-                    status === item &&
-                      styles.activeChipText,
-                  ]}
-                >
-                  {item}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-
-          <Text style={styles.label}>
-            Assign To
-          </Text>
-
-          {loadingUsers ? (
-            <View style={styles.userLoading}>
-              <ActivityIndicator
-                size="small"
-                color="#111827"
-              />
-
-              <Text
-                style={
-                  styles.userLoadingText
-                }
-              >
-                Loading team members...
-              </Text>
-            </View>
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={
-                false
-              }
-              style={styles.usersScroll}
-            >
-              <Pressable
-                style={[
-                  styles.userChip,
-                  !assignedTo &&
-                    styles.activeUser,
-                ]}
-                onPress={() =>
-                  setAssignedTo(null)
-                }
-              >
-                <Text
-                  style={[
-                    styles.userText,
-                    !assignedTo &&
-                      styles.activeUserText,
-                  ]}
-                >
-                  Unassigned
-                </Text>
-              </Pressable>
-
-              {users.map((user) => (
-                <Pressable
-                  key={user._id}
-                  style={[
-                    styles.userChip,
-                    assignedTo?._id ===
-                      user._id &&
-                      styles.activeUser,
-                  ]}
-                  onPress={() =>
-                    setAssignedTo(user)
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.userText,
-                      assignedTo?._id ===
-                        user._id &&
-                        styles.activeUserText,
-                    ]}
-                  >
-                    {user.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          )}
-
-          <Text style={styles.label}>
-            Screenshot
-          </Text>
-
-          {screenshot ? (
-            <View style={styles.imageBox}>
-              <Image
-                source={{
-                  uri: screenshot,
-                }}
-                style={styles.image}
-              />
-
-              <Pressable
-                style={styles.removeImage}
-                onPress={() =>
-                  setScreenshot(null)
-                }
-              >
-                <Text
-                  style={
-                    styles.removeImageText
-                  }
-                >
-                  Remove
-                </Text>
-              </Pressable>
-            </View>
-          ) : (
-            <Pressable
-              style={styles.upload}
-              onPress={pickImage}
-            >
-              <Text style={styles.uploadIcon}>
-                +
-              </Text>
-
-              <Text style={styles.uploadTitle}>
-                Attach Screenshot
-              </Text>
-
-              <Text style={styles.uploadText}>
-                Select an image from your phone
-              </Text>
-            </Pressable>
-          )}
-
+      <View style={styles.chipContainer}>
+        {priorities.map((item) => (
           <Pressable
+            key={item}
             style={[
-              styles.button,
-              submitting &&
-                styles.disabled,
+              styles.chip,
+              priority === item &&
+                styles.selectedChip,
             ]}
-            onPress={createIssue}
-            disabled={submitting}
+            onPress={() => setPriority(item)}
           >
-            {submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>
-                Report Issue
-              </Text>
-            )}
+            <Text
+              style={[
+                styles.chipText,
+                priority === item &&
+                  styles.selectedChipText,
+              ]}
+            >
+              {item}
+            </Text>
           </Pressable>
-        </View>
-      </ScrollView>
-    </TouchableWithoutFeedback>
+        ))}
+      </View>
+
+      <Text style={styles.label}>
+        Status
+      </Text>
+
+      <View style={styles.chipContainer}>
+        {statuses.map((item) => (
+          <Pressable
+            key={item}
+            style={[
+              styles.chip,
+              status === item &&
+                styles.selectedChip,
+            ]}
+            onPress={() => setStatus(item)}
+          >
+            <Text
+              style={[
+                styles.chipText,
+                status === item &&
+                  styles.selectedChipText,
+              ]}
+            >
+              {item}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.label}>
+        Assigned User
+      </Text>
+
+      <View style={styles.assignedBox}>
+        <Pressable
+          style={[
+            styles.assignedChip,
+            assignedTo === "" &&
+              styles.selectedAssignedChip,
+          ]}
+          onPress={() => setAssignedTo("")}
+        >
+          <Text
+            style={[
+              styles.assignedText,
+              assignedTo === "" &&
+                styles.selectedAssignedText,
+            ]}
+          >
+            Unassigned
+          </Text>
+        </Pressable>
+
+        {projectUsers.map((user) => (
+          <Pressable
+            key={user._id}
+            style={[
+              styles.assignedChip,
+              assignedTo === user._id &&
+                styles.selectedAssignedChip,
+            ]}
+            onPress={() =>
+              setAssignedTo(user._id)
+            }
+          >
+            <Text
+              style={[
+                styles.assignedText,
+                assignedTo === user._id &&
+                  styles.selectedAssignedText,
+              ]}
+            >
+              {user.name}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.label}>
+        Screenshots
+      </Text>
+
+      <Pressable
+        style={styles.secondaryButton}
+        onPress={pickImages}
+      >
+        <Text style={styles.secondaryButtonText}>
+          {screenshots.length > 0
+            ? `${screenshots.length} screenshot(s) selected`
+            : "Add Screenshots"}
+        </Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.createButton,
+          creating &&
+            styles.disabledButton,
+        ]}
+        onPress={createIssue}
+        disabled={creating}
+      >
+        {creating ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.createButtonText}>
+            Create Issue
+          </Text>
+        )}
+      </Pressable>
+    </ScrollView>
   );
 }
 
@@ -488,190 +392,147 @@ const styles = StyleSheet.create({
 
   content: {
     padding: 20,
-    paddingBottom: 40,
+    paddingTop: 35,
+    paddingBottom: 45,
+  },
+
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   title: {
-    fontSize: 27,
+    fontSize: 28,
     fontWeight: "800",
     color: "#0F172A",
+    marginBottom: 8,
   },
 
-  subtitle: {
+  projectName: {
     color: "#64748B",
-    marginTop: 7,
-    marginBottom: 20,
-    lineHeight: 21,
-  },
-
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 20,
-    elevation: 2,
+    fontSize: 14,
+    marginBottom: 25,
   },
 
   label: {
-    fontSize: 13,
-    fontWeight: "800",
+    fontSize: 14,
+    fontWeight: "700",
     color: "#334155",
-    marginBottom: 8,
-    marginTop: 3,
+    marginBottom: 9,
+    marginTop: 4,
   },
 
   input: {
-    minHeight: 52,
+    height: 52,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    backgroundColor: "#F8FAFC",
+    borderRadius: 13,
+    backgroundColor: "#fff",
+    paddingHorizontal: 15,
     color: "#0F172A",
+    fontSize: 15,
     marginBottom: 18,
   },
 
-  textarea: {
-    height: 130,
+  textArea: {
+    height: 120,
     paddingTop: 14,
   },
 
-  chips: {
+  chipContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
     marginBottom: 18,
   },
 
   chip: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    borderRadius: 20,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    marginRight: 7,
-    marginBottom: 7,
-    backgroundColor: "#F8FAFC",
+    marginRight: 8,
+    marginBottom: 8,
   },
 
-  activeChip: {
+  selectedChip: {
     backgroundColor: "#111827",
     borderColor: "#111827",
   },
 
   chipText: {
-    color: "#64748B",
-    fontSize: 12,
+    color: "#475569",
     fontWeight: "700",
   },
 
-  activeChipText: {
+  selectedChipText: {
     color: "#fff",
   },
 
-  usersScroll: {
-    marginBottom: 18,
-  },
-
-  userChip: {
+  assignedBox: {
+    backgroundColor: "#fff",
+    borderRadius: 15,
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    backgroundColor: "#F8FAFC",
-    borderRadius: 20,
+    padding: 10,
+    marginBottom: 20,
+  },
+
+  assignedChip: {
+    paddingVertical: 12,
     paddingHorizontal: 13,
-    paddingVertical: 9,
-    marginRight: 8,
+    borderRadius: 11,
+    marginBottom: 7,
+    backgroundColor: "#F8FAFC",
   },
 
-  activeUser: {
+  selectedAssignedChip: {
     backgroundColor: "#111827",
-    borderColor: "#111827",
   },
 
-  userText: {
-    color: "#64748B",
-    fontSize: 12,
+  assignedText: {
+    color: "#334155",
     fontWeight: "700",
   },
 
-  activeUserText: {
+  selectedAssignedText: {
     color: "#fff",
   },
 
-  userLoading: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 18,
-  },
-
-  userLoadingText: {
-    marginLeft: 8,
-    color: "#64748B",
-    fontSize: 12,
-  },
-
-  upload: {
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: "#CBD5E1",
-    borderRadius: 15,
-    padding: 22,
-    alignItems: "center",
-    marginBottom: 20,
-    backgroundColor: "#F8FAFC",
-  },
-
-  uploadIcon: {
-    fontSize: 28,
-    color: "#475569",
-    fontWeight: "300",
-  },
-
-  uploadTitle: {
-    color: "#0F172A",
-    fontWeight: "800",
-    marginTop: 5,
-  },
-
-  uploadText: {
-    color: "#94A3B8",
-    fontSize: 12,
-    marginTop: 3,
-  },
-
-  imageBox: {
-    marginBottom: 20,
-  },
-
-  image: {
-    width: "100%",
-    height: 210,
-    borderRadius: 14,
-  },
-
-  removeImage: {
-    alignSelf: "flex-end",
-    marginTop: 8,
-  },
-
-  removeImageText: {
-    color: "#DC2626",
-    fontWeight: "700",
-  },
-
-  button: {
-    height: 53,
-    backgroundColor: "#111827",
+  secondaryButton: {
+    height: 50,
     borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 15,
+  },
+
+  secondaryButtonText: {
+    color: "#111827",
+    fontWeight: "800",
+  },
+
+  createButton: {
+    height: 52,
+    borderRadius: 13,
+    backgroundColor: "#111827",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  disabled: {
-    opacity: 0.6,
+  disabledButton: {
+    opacity: 0.7,
   },
 
-  buttonText: {
+  createButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800",
   },
 });

@@ -1,0 +1,21 @@
+{
+  "name": "bug-issue-tracker-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Next.js web client for the Bug & Issue Tracker. Uses the same backend API and MongoDB as the mobile app.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^15.5.9",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.5.9"
+  }
+}

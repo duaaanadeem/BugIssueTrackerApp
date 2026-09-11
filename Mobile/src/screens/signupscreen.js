@@ -26,7 +26,6 @@ export default function SignupScreen({ navigation }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [loading, setLoading] = useState(false);
 
   const handleSignup = async () => {
@@ -97,7 +96,8 @@ export default function SignupScreen({ navigation }) {
     } catch (error) {
       Alert.alert(
         "Signup Failed",
-        error.message || "Unable to create your account."
+        error.message ||
+          "Unable to create your account."
       );
     } finally {
       setLoading(false);
@@ -206,7 +206,9 @@ export default function SignupScreen({ navigation }) {
               style={({ pressed }) => [
                 styles.button,
                 loading && styles.disabled,
-                pressed && !loading && styles.pressed,
+                pressed &&
+                  !loading &&
+                  styles.pressed,
               ]}
               onPress={handleSignup}
               disabled={loading}
@@ -218,7 +220,9 @@ export default function SignupScreen({ navigation }) {
                     size="small"
                   />
 
-                  <Text style={styles.loadingText}>
+                  <Text
+                    style={styles.loadingText}
+                  >
                     Creating Account...
                   </Text>
                 </>
@@ -287,7 +291,7 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 16,
-    backgroundColor: "#4F46E5",
+    backgroundColor: "#111827",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 18,
@@ -317,10 +321,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 22,
-
     borderWidth: 1,
     borderColor: "#E2E8F0",
-
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -353,7 +355,7 @@ const styles = StyleSheet.create({
   button: {
     height: 52,
     borderRadius: 12,
-    backgroundColor: "#4F46E5",
+    backgroundColor: "#111827",
     justifyContent: "center",
     alignItems: "center",
     flexDirection: "row",
@@ -389,7 +391,7 @@ const styles = StyleSheet.create({
   },
 
   loginBold: {
-    color: "#4F46E5",
+    color: "#111827",
     fontWeight: "800",
   },
 

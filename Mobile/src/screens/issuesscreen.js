@@ -1,6 +1,7 @@
 import React, {
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
@@ -14,11 +15,9 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
-  ScrollView,
 } from "react-native";
 
 import { AuthContext } from "../context/authcontext";
-
 import { apiRequest } from "../services/api";
 
 const statuses = [
@@ -37,20 +36,85 @@ const priorities = [
   "Critical",
 ];
 
+function FilterDropdown({
+  label,
+  value,
+  options,
+  onChange,
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <View style={styles.filterGroup}>
+      <Text style={styles.filterTitle}>
+        {label}
+      </Text>
+
+      <Pressable
+        style={styles.dropdown}
+        onPress={() =>
+          setOpen((current) => !current)
+        }
+      >
+        <Text style={styles.dropdownText}>
+          {value}
+        </Text>
+
+        <Text style={styles.dropdownArrow}>
+          {open ? "▲" : "▼"}
+        </Text>
+      </Pressable>
+
+      {open && (
+        <View style={styles.dropdownMenu}>
+          {options.map((item) => (
+            <Pressable
+              key={item.value}
+              style={[
+                styles.dropdownOption,
+                value === item.label &&
+                  styles.selectedOption,
+              ]}
+              onPress={() => {
+                onChange(item.value);
+                setOpen(false);
+              }}
+            >
+              <Text
+                style={[
+                  styles.dropdownOptionText,
+                  value === item.label &&
+                    styles.selectedOptionText,
+                ]}
+              >
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function IssuesScreen({
   route,
   navigation,
 }) {
-  const { token } =
-    useContext(AuthContext);
+  const { token } = useContext(AuthContext);
 
-  const { projectId } =
-    route.params;
+  const { projectId } = route.params;
+
+  const [project, setProject] =
+    useState(null);
 
   const [issues, setIssues] =
     useState([]);
 
   const [search, setSearch] =
+    useState("");
+
+  const [appliedSearch, setAppliedSearch] =
     useState("");
 
   const [status, setStatus] =
@@ -59,11 +123,32 @@ export default function IssuesScreen({
   const [priority, setPriority] =
     useState("All");
 
+  const [assignedTo, setAssignedTo] =
+    useState("All");
+
   const [loading, setLoading] =
     useState(true);
 
   const [refreshing, setRefreshing] =
     useState(false);
+
+  const loadProject = async () => {
+    try {
+      const data = await apiRequest(
+        `/projects/${projectId}`,
+        "GET",
+        null,
+        token
+      );
+
+      setProject(data.project);
+    } catch (error) {
+      Alert.alert(
+        "Unable to load project",
+        error.message
+      );
+    }
+  };
 
   const loadIssues = async (
     showLoader = true
@@ -78,23 +163,21 @@ export default function IssuesScreen({
           projectId
         )}`;
 
-      if (search.trim()) {
-        endpoint += `&search=${encodeURIComponent(
-          search.trim()
-        )}`;
+      // Search is handled by backend.
+      if (appliedSearch.trim()) {
+        endpoint +=
+          `&search=${encodeURIComponent(
+            appliedSearch.trim()
+          )}`;
       }
 
-      if (status !== "All") {
-        endpoint += `&status=${encodeURIComponent(
-          status
-        )}`;
-      }
-
-      if (priority !== "All") {
-        endpoint += `&priority=${encodeURIComponent(
-          priority
-        )}`;
-      }
+      /*
+       * We intentionally do NOT send status and
+       * priority to the backend here.
+       *
+       * They are filtered locally below so the
+       * mobile filter always matches the UI.
+       */
 
       const data = await apiRequest(
         endpoint,
@@ -115,10 +198,16 @@ export default function IssuesScreen({
   };
 
   useEffect(() => {
+    loadProject();
+  }, [projectId, token]);
+
+  useEffect(() => {
     const unsubscribe =
       navigation.addListener(
         "focus",
-        () => loadIssues()
+        () => {
+          loadIssues();
+        }
       );
 
     return unsubscribe;
@@ -126,23 +215,134 @@ export default function IssuesScreen({
     navigation,
     token,
     projectId,
-    status,
-    priority,
+    appliedSearch,
   ]);
 
   const handleSearch = () => {
-    loadIssues();
+    setAppliedSearch(search);
   };
 
   const handleRefresh = async () => {
     setRefreshing(true);
+
     await loadIssues(false);
+
     setRefreshing(false);
   };
 
-  const getPriorityStyle = (
-    value
-  ) => {
+  /*
+   * Only the project creator and project members
+   * can appear in Assigned User.
+   */
+  const projectUsers = useMemo(() => {
+    if (!project) {
+      return [];
+    }
+
+    return [
+      ...(project.createdBy
+        ? [project.createdBy]
+        : []),
+
+      ...(project.members || []),
+    ].filter(
+      (user, index, self) =>
+        user?._id &&
+        index ===
+          self.findIndex(
+            (item) =>
+              item._id === user._id
+          )
+    );
+  }, [project]);
+
+  const assignedOptions = [
+    {
+      label: "All",
+      value: "All",
+    },
+
+    {
+      label: "Unassigned",
+      value: "Unassigned",
+    },
+
+    ...projectUsers.map((user) => ({
+      label: user.name,
+      value: user._id,
+    })),
+  ];
+
+  /*
+   * MAIN FILTERING LOGIC
+   *
+   * Status
+   * Priority
+   * Assigned User
+   *
+   * All filters are applied together.
+   */
+  const visibleIssues = useMemo(() => {
+    return issues.filter((issue) => {
+      // STATUS FILTER
+      if (
+        status !== "All" &&
+        issue.status !== status
+      ) {
+        return false;
+      }
+
+      // PRIORITY FILTER
+      if (
+        priority !== "All" &&
+        issue.priority !== priority
+      ) {
+        return false;
+      }
+
+      // ASSIGNED USER FILTER
+      if (
+        assignedTo === "Unassigned" &&
+        issue.assignedTo
+      ) {
+        return false;
+      }
+
+      if (
+        assignedTo !== "All" &&
+        assignedTo !== "Unassigned" &&
+        issue.assignedTo?._id !== assignedTo
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [
+    issues,
+    status,
+    priority,
+    assignedTo,
+  ]);
+
+  const getAssignedLabel = () => {
+    if (assignedTo === "All") {
+      return "All";
+    }
+
+    if (assignedTo === "Unassigned") {
+      return "Unassigned";
+    }
+
+    const user = projectUsers.find(
+      (item) =>
+        item._id === assignedTo
+    );
+
+    return user?.name || "All";
+  };
+
+  const getPriorityStyle = (value) => {
     if (value === "Critical") {
       return styles.critical;
     }
@@ -158,9 +358,7 @@ export default function IssuesScreen({
     return styles.medium;
   };
 
-  const getStatusStyle = (
-    value
-  ) => {
+  const getStatusStyle = (value) => {
     if (value === "Resolved") {
       return styles.resolved;
     }
@@ -176,9 +374,7 @@ export default function IssuesScreen({
     return styles.open;
   };
 
-  const renderIssue = ({
-    item,
-  }) => (
+  const renderIssue = ({ item }) => (
     <Pressable
       style={styles.card}
       onPress={() =>
@@ -239,6 +435,7 @@ export default function IssuesScreen({
 
   return (
     <View style={styles.container}>
+      {/* SEARCH */}
       <View style={styles.searchRow}>
         <TextInput
           placeholder="Search issues..."
@@ -260,78 +457,51 @@ export default function IssuesScreen({
         </Pressable>
       </View>
 
-      <Text style={styles.filterTitle}>
-        Status
-      </Text>
+      {/* FILTERS */}
+      <View style={styles.filters}>
+        <FilterDropdown
+          label="Status"
+          value={status}
+          options={statuses.map((item) => ({
+            label: item,
+            value: item,
+          }))}
+          onChange={setStatus}
+        />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterScroll}
-      >
-        {statuses.map((item) => (
-          <Pressable
-            key={item}
-            style={[
-              styles.filterChip,
-              status === item &&
-                styles.activeChip,
-            ]}
-            onPress={() =>
-              setStatus(item)
-            }
-          >
-            <Text
-              style={[
-                styles.filterText,
-                status === item &&
-                  styles.activeFilterText,
-              ]}
-            >
-              {item}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+        <FilterDropdown
+          label="Priority"
+          value={priority}
+          options={priorities.map((item) => ({
+            label: item,
+            value: item,
+          }))}
+          onChange={setPriority}
+        />
 
-      <Text style={styles.filterTitle}>
-        Priority
-      </Text>
+        <FilterDropdown
+          label="Assigned User"
+          value={getAssignedLabel()}
+          options={assignedOptions}
+          onChange={setAssignedTo}
+        />
+      </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.filterScroll}
-      >
-        {priorities.map((item) => (
-          <Pressable
-            key={item}
-            style={[
-              styles.filterChip,
-              priority === item &&
-                styles.activeChip,
-            ]}
-            onPress={() =>
-              setPriority(item)
-            }
-          >
-            <Text
-              style={[
-                styles.filterText,
-                priority === item &&
-                  styles.activeFilterText,
-              ]}
-            >
-              {item}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
-
+      {/* HEADER */}
       <View style={styles.resultHeader}>
-        <Text style={styles.resultTitle}>
-          Issues
-        </Text>
+        <View>
+          <Text style={styles.resultTitle}>
+            Issues
+          </Text>
+
+          {project?.name && (
+            <Text
+              style={styles.projectName}
+            >
+              {project.name}
+            </Text>
+          )}
+        </View>
 
         <Pressable
           style={styles.createButton}
@@ -350,6 +520,7 @@ export default function IssuesScreen({
         </Pressable>
       </View>
 
+      {/* ISSUES */}
       {loading ? (
         <View style={styles.loadingBox}>
           <ActivityIndicator
@@ -357,18 +528,22 @@ export default function IssuesScreen({
             color="#111827"
           />
 
-          <Text style={styles.loadingText}>
+          <Text
+            style={styles.loadingText}
+          >
             Loading issues...
           </Text>
         </View>
       ) : (
         <FlatList
-          data={issues}
+          data={visibleIssues}
           keyExtractor={(item) =>
             item._id
           }
           renderItem={renderIssue}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={
+            false
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -376,21 +551,27 @@ export default function IssuesScreen({
             />
           }
           contentContainerStyle={
-            issues.length === 0
+            visibleIssues.length === 0
               ? styles.emptyContainer
               : styles.list
           }
           ListEmptyComponent={
             <View style={styles.emptyBox}>
-              <Text style={styles.emptyIcon}>
+              <Text
+                style={styles.emptyIcon}
+              >
                 ✓
               </Text>
 
-              <Text style={styles.emptyTitle}>
+              <Text
+                style={styles.emptyTitle}
+              >
                 No issues found
               </Text>
 
-              <Text style={styles.emptyText}>
+              <Text
+                style={styles.emptyText}
+              >
                 Try changing your search or
                 filters, or report a new issue.
               </Text>
@@ -438,6 +619,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
+  filters: {
+    marginBottom: 4,
+    zIndex: 10,
+  },
+
+  filterGroup: {
+    marginBottom: 10,
+  },
+
   filterTitle: {
     color: "#334155",
     fontSize: 12,
@@ -445,34 +635,59 @@ const styles = StyleSheet.create({
     marginBottom: 7,
   },
 
-  filterScroll: {
-    flexGrow: 0,
-    marginBottom: 13,
-  },
-
-  filterChip: {
+  dropdown: {
+    height: 46,
     backgroundColor: "#fff",
     borderWidth: 1,
     borderColor: "#E2E8F0",
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 7,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 
-  activeChip: {
-    backgroundColor: "#111827",
-    borderColor: "#111827",
-  },
-
-  filterText: {
-    color: "#64748B",
-    fontSize: 12,
+  dropdownText: {
+    color: "#0F172A",
+    fontSize: 13,
     fontWeight: "700",
   },
 
-  activeFilterText: {
+  dropdownArrow: {
+    color: "#64748B",
+    fontSize: 11,
+  },
+
+  dropdownMenu: {
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    marginTop: 5,
+    overflow: "hidden",
+    elevation: 4,
+  },
+
+  dropdownOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
+
+  selectedOption: {
+    backgroundColor: "#111827",
+  },
+
+  dropdownOptionText: {
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  selectedOptionText: {
     color: "#fff",
+    fontWeight: "800",
   },
 
   resultHeader: {
@@ -480,12 +695,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginVertical: 12,
+    zIndex: 1,
   },
 
   resultTitle: {
     fontSize: 21,
     fontWeight: "800",
     color: "#0F172A",
+  },
+
+  projectName: {
+    color: "#64748B",
+    fontSize: 12,
+    marginTop: 2,
   },
 
   createButton: {

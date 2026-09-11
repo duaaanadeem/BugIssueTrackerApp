@@ -18,7 +18,6 @@ import {
 import { useFocusEffect } from "@react-navigation/native";
 
 import { AuthContext } from "../context/authcontext";
-
 import { apiRequest } from "../services/api";
 
 export default function HomeScreen({ navigation }) {
@@ -46,7 +45,6 @@ export default function HomeScreen({ navigation }) {
       );
 
       const projects = projectsData.projects || [];
-
       setProjectCount(projects.length);
 
       const issuesData = await apiRequest(
@@ -76,7 +74,9 @@ export default function HomeScreen({ navigation }) {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+
     await loadSummary(false);
+
     setRefreshing(false);
   };
 
@@ -250,7 +250,8 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 45,
     paddingBottom: 40,
   },
 
