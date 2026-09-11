@@ -38,15 +38,23 @@ const isProjectMember = (project, userId) => {
 // --------------------------------------------------
 
 const isUserInProject = (project, userId) => {
-  const isOwner =
-    String(project.createdBy) === String(userId);
-
-  const isMember = project.members.some(
-    (memberId) => String(memberId) === String(userId)
+  return project.members.some(
+    (memberId) => String(memberId?._id || memberId) === String(userId)
   );
-
-  return isOwner || isMember;
 };
+
+const populateIssueRelations = (query) =>
+  query
+    .populate("createdBy", "name email")
+    .populate("assignedTo", "name email")
+    .populate({
+      path: "projectId",
+      select: "name members createdBy",
+      populate: [
+        { path: "members", select: "name email" },
+        { path: "createdBy", select: "name email" },
+      ],
+    });
 
 // ==================================================
 // CREATE ISSUE
@@ -176,12 +184,9 @@ const createIssue = async (req, res) => {
     });
 
     // Populate response
-    const populatedIssue = await Issue.findById(
-      issue._id
-    )
-      .populate("createdBy", "name email")
-      .populate("assignedTo", "name email")
-      .populate("projectId", "name");
+    const populatedIssue = await populateIssueRelations(
+      Issue.findById(issue._id)
+    );
 
     res.status(201).json({
       success: true,
@@ -258,11 +263,9 @@ const getIssues = async (req, res) => {
       };
     }
 
-    const issues = await Issue.find(filter)
-      .populate("createdBy", "name email")
-      .populate("assignedTo", "name email")
-      .populate("projectId", "name")
-      .sort({ createdAt: -1 });
+    const issues = await populateIssueRelations(
+      Issue.find(filter)
+    ).sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -307,12 +310,9 @@ const getIssueById = async (req, res) => {
       });
     }
 
-    const populatedIssue = await Issue.findById(
-      issue._id
-    )
-      .populate("createdBy", "name email")
-      .populate("assignedTo", "name email")
-      .populate("projectId", "name");
+    const populatedIssue = await populateIssueRelations(
+      Issue.findById(issue._id)
+    );
 
     res.status(200).json({
       success: true,
@@ -536,12 +536,9 @@ const updateIssue = async (req, res) => {
     }
 
     // Get updated issue
-    const updatedIssue = await Issue.findById(
-      issue._id
-    )
-      .populate("createdBy", "name email")
-      .populate("assignedTo", "name email")
-      .populate("projectId", "name");
+    const updatedIssue = await populateIssueRelations(
+      Issue.findById(issue._id)
+    );
 
     res.status(200).json({
       success: true,

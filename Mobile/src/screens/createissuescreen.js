@@ -43,6 +43,8 @@ export default function CreateIssueScreen({
   const projectId = route.params?.projectId;
 
   const [project, setProject] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(projectId || "");
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -56,21 +58,36 @@ export default function CreateIssueScreen({
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    loadProject();
-  }, [projectId]);
+    loadProjects();
+  }, [projectId, token]);
 
-  const loadProject = async () => {
+  const loadProjects = async () => {
     try {
       setLoading(true);
 
+      if (projectId) {
+        const data = await apiRequest(
+          `/projects/${projectId}`,
+          "GET",
+          null,
+          token
+        );
+        setProject(data.project);
+        setSelectedProjectId(projectId);
+        return;
+      }
+
       const data = await apiRequest(
-        `/projects/${projectId}`,
+        "/projects",
         "GET",
         null,
         token
       );
-
-      setProject(data.project);
+      const list = data.projects || [];
+      setProjects(list);
+      const firstId = list[0]?._id;
+      setSelectedProjectId(firstId || "");
+      setProject(list[0] || null);
     } catch (error) {
       Alert.alert(
         "Error",
@@ -81,21 +98,11 @@ export default function CreateIssueScreen({
     }
   };
 
-  const projectUsers = project
-    ? [
-        ...(project.createdBy
-          ? [project.createdBy]
-          : []),
-        ...(project.members || []),
-      ].filter(
-        (user, index, self) =>
-          user?._id &&
-          index ===
-            self.findIndex(
-              (item) => item._id === user._id
-            )
-      )
-    : [];
+  const projectUsers = (project?.members || []).filter(
+    (user, index, self) =>
+      user?._id &&
+      index === self.findIndex((item) => item._id === user._id)
+  );
 
   const pickImages = async () => {
     const permission =
@@ -156,7 +163,7 @@ export default function CreateIssueScreen({
         "/issues",
         "POST",
         {
-          projectId,
+          projectId: selectedProjectId,
           title: title.trim(),
           description: description.trim(),
           screenshots,
@@ -210,9 +217,43 @@ export default function CreateIssueScreen({
         Report New Issue
       </Text>
 
-      <Text style={styles.projectName}>
-        Project: {project?.name || "Project"}
+      <Text style={styles.label}>
+        Project
       </Text>
+
+      {projectId ? (
+        <Text style={styles.projectName}>
+          {project?.name || "Project"}
+        </Text>
+      ) : (
+        <View style={styles.chipContainer}>
+          {projects.map((item) => (
+            <Pressable
+              key={item._id}
+              style={[
+                styles.chip,
+                selectedProjectId === item._id &&
+                  styles.selectedChip,
+              ]}
+              onPress={() => {
+                setSelectedProjectId(item._id);
+                setProject(item);
+                setAssignedTo("");
+              }}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  selectedProjectId === item._id &&
+                    styles.selectedChipText,
+                ]}
+              >
+                {item.name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
 
       <Text style={styles.label}>
         Issue Title
@@ -347,6 +388,11 @@ export default function CreateIssueScreen({
           </Pressable>
         ))}
       </View>
+      {projectUsers.length === 0 && (
+        <Text style={styles.emptyMembers}>
+          No members were added to this project. Only added members can be assigned.
+        </Text>
+      )}
 
       <Text style={styles.label}>
         Screenshots
@@ -478,7 +524,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E2E8F0",
     padding: 10,
-    marginBottom: 20,
+    marginBottom: 8,
+  },
+
+  emptyMembers: {
+    color: "#64748B",
+    fontSize: 13,
+    marginBottom: 18,
   },
 
   assignedChip: {

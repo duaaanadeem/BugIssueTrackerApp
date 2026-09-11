@@ -1,16 +1,15 @@
-import Providers from "../components/Providers";
-import "./globals.css";
+import './globals.css';
+import Providers from '../components/Providers';
 
 export const metadata = {
-  title: "Bug & Issue Tracker",
-  description:
-    "Professional web client for the Bug & Issue Tracker. Uses the same backend API as the mobile app.",
+  title: 'BugTracker | Issue & Project Management',
+  description: 'Linear-inspired developer issue tracking workspace',
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className="dark">
+      <body className="bg-[#0c0b14] text-[#f5f6fa] antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>

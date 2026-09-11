@@ -1,188 +1,95 @@
-"use client";
-
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-
-import Button from "../../components/Button";
-import Input from "../../components/Input";
-import ProtectedRoute from "../../components/ProtectedRoute";
-import { useAuth } from "../../context/AuthContext";
-
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+'use client';
+import React, { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import Input from '../../components/Input';
+import Button from '../../components/Button';
+import ErrorMessage from '../../components/ErrorMessage';
+import { useAuth } from '../../context/AuthContext';
+import { User, Mail, Lock, Sparkles } from 'lucide-react';
 
 export default function SignupPage() {
-  return (
-    <ProtectedRoute guestOnly>
-      <SignupForm />
-    </ProtectedRoute>
-  );
-}
-
-function SignupForm() {
-  const { signup } = useAuth();
   const router = useRouter();
-
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-
-  const [errors, setErrors] = useState({});
-  const [formError, setFormError] = useState("");
-  const [success, setSuccess] = useState("");
+  const { signup } = useAuth();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const validate = () => {
-    const next = {};
-
-    const trimmedName = name.trim();
-    const trimmedEmail = email.trim().toLowerCase();
-
-    if (!trimmedName) {
-      next.name = "Name is required";
-    } else if (trimmedName.length < 2) {
-      next.name = "Name must be at least 2 characters.";
-    }
-
-    if (!trimmedEmail) {
-      next.email = "Email is required";
-    } else if (!EMAIL_REGEX.test(trimmedEmail)) {
-      next.email = "Please enter a valid email address.";
-    }
-
-    if (!password) {
-      next.password = "Password is required";
-    } else if (password.length < 6) {
-      next.password = "Password must be at least 6 characters.";
-    }
-
-    if (!confirmPassword) {
-      next.confirmPassword = "Please confirm your password.";
-    } else if (password !== confirmPassword) {
-      next.confirmPassword = "Passwords do not match.";
-    }
-
-    setErrors(next);
-
-    return Object.keys(next).length === 0;
-  };
-
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-
-    setFormError("");
-    setSuccess("");
-
-    if (!validate()) {
-      return;
-    }
-
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     try {
       setLoading(true);
-
+      setError('');
       await signup(name, email, password);
-
-      setSuccess("Your account has been created successfully.");
-
-      setTimeout(() => {
-        router.push("/login");
-      }, 900);
-    } catch (error) {
-      setFormError(error.message || "Unable to create your account.");
+      router.push('/home');
+    } catch (err) {
+      setError(err.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="auth-page">
-      <div className="auth-wrap">
+    <div className="flex min-h-dvh w-full items-center justify-center bg-[#0c0b14] p-6">
+      <div className="w-full max-w-md space-y-6 rounded-2xl border border-[#2b264a] bg-[#18152b] p-8 shadow-2xl">
+        <div className="space-y-2 text-center">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-violet-600 to-fuchsia-500 text-white shadow-lg shadow-violet-600/30">
+            <Sparkles size={20} className="shrink-0" />
+          </div>
+          <h1 className="text-xl font-bold text-[#f5f6fa]">Create your workspace account</h1>
+          <p className="text-[13px] text-[#9fa1b8]">Collaborate and resolve issues in production</p>
+        </div>
 
-        <Link href="/login" className="back-link">
-          ← Back to Login
-        </Link>
+        <ErrorMessage message={error} />
 
-        <div className="logo-lg">BI</div>
-
-        <h1 className="center-title">Create Account</h1>
-
-        <p className="subtitle center">
-          Join your project team and start tracking issues.
-        </p>
-
-        <form className="card" onSubmit={handleSubmit}>
-
+        <form onSubmit={handleSubmit} className="space-y-4">
           <Input
+            id="name"
             label="Full Name"
-            placeholder="Your name"
+            icon={User}
+            placeholder="Jane Doe"
             value={name}
-            onChange={(event) => setName(event.target.value)}
-            error={errors.name}
-            autoComplete="name"
+            onChange={(e) => setName(e.target.value)}
+            required
           />
 
           <Input
-            label="Email Address"
+            id="email"
+            label="Email"
             type="email"
-            placeholder="you@example.com"
+            icon={Mail}
+            placeholder="jane@example.com"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            error={errors.email}
-            autoComplete="email"
+            onChange={(e) => setEmail(e.target.value)}
+            required
           />
 
           <Input
+            id="password"
             label="Password"
             type="password"
-            placeholder="At least 6 characters"
+            icon={Lock}
+            placeholder="••••••••"
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            error={errors.password}
-            autoComplete="new-password"
+            onChange={(e) => setPassword(e.target.value)}
+            required
           />
 
-          <Input
-            label="Confirm Password"
-            type="password"
-            placeholder="Re-enter your password"
-            value={confirmPassword}
-            onChange={(event) => setConfirmPassword(event.target.value)}
-            error={errors.confirmPassword}
-            autoComplete="new-password"
-          />
-
-          {formError ? (
-            <p className="error-text">{formError}</p>
-          ) : null}
-
-          {success ? (
-            <p className="muted">{success}</p>
-          ) : null}
-
-          <Button
-            type="submit"
-            block
-            disabled={loading}
-          >
-            {loading ? "Creating Account..." : "Create Account"}
+          <Button type="submit" variant="primary" loading={loading} className="mt-2 w-full">
+            Create Account
           </Button>
-
-          <div className="divider">OR</div>
-
-          <Link
-            href="/login"
-            className="btn btn-secondary btn-block"
-          >
-            Sign In
-          </Link>
-
         </form>
 
-        <p className="faint center" style={{ marginTop: 24 }}>
-          Secure project and issue management
-        </p>
-
+        <div className="border-t border-[#211c3a] pt-4 text-center">
+          <p className="text-[13px] text-[#656185]">
+            Already registered?{' '}
+            <Link href="/login" className="font-medium text-violet-400 hover:text-violet-300">
+              Sign in
+            </Link>
+          </p>
+        </div>
       </div>
     </div>
   );

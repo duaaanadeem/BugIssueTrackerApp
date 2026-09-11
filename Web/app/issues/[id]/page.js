@@ -1,649 +1,190 @@
-"use client";
-
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-
-import AppShell from "../../../components/AppShell";
-import Button from "../../../components/Button";
-import Card from "../../../components/Card";
-import ChipGroup from "../../../components/ChipGroup";
-import ErrorMessage from "../../../components/ErrorMessage";
-import Loading from "../../../components/Loading";
-import ProtectedRoute from "../../../components/ProtectedRoute";
-import PriorityBadge from "../../../components/PriorityBadge";
-import StatusBadge from "../../../components/StatusBadge";
-
-import { useAuth } from "../../../context/AuthContext";
-import { apiRequest } from "../../../services/api";
-
-const statuses = [
-  "Open",
-  "In Progress",
-  "Resolved",
-  "Closed",
-];
-
-const priorities = [
-  "Low",
-  "Medium",
-  "High",
-  "Critical",
-];
+'use client';
+import React, { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import AppShell from '../../../components/AppShell';
+import StatusBadge from '../../../components/StatusBadge';
+import PriorityBadge from '../../../components/PriorityBadge';
+import Button from '../../../components/Button';
+import Loading from '../../../components/Loading';
+import ErrorMessage from '../../../components/ErrorMessage';
+import { apiService } from '../../../services/api';
+import { getProjectMembers, getUserId } from '../../../utils/projectMembers';
+import { ArrowLeft, MessageSquare, History, Trash2 } from 'lucide-react';
 
 export default function IssueDetailsPage() {
-  const params = useParams();
+  const { id } = useParams();
   const router = useRouter();
-  const { token } = useAuth();
-
-  const issueId = params?.id;
-
   const [issue, setIssue] = useState(null);
-  const [project, setProject] = useState(null);
-
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [status, setStatus] = useState('Open');
+  const [priority, setPriority] = useState('Medium');
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [assignedTo, setAssignedTo] = useState('');
 
-  const [error, setError] = useState("");
-
-  const [status, setStatus] = useState("Open");
-  const [priority, setPriority] = useState("Medium");
-  const [assignedTo, setAssignedTo] = useState("");
-
-  /*
-   * Load issue AND its actual project.
-   *
-   * The project is fetched separately so that the Assigned User
-   * dropdown uses ONLY:
-   *
-   * 1. Project creator
-   * 2. Project members
-   */
-  const loadIssue = useCallback(async () => {
-    if (!issueId || !token) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError("");
-
-      // Load issue
-      const issueData = await apiRequest(
-        `/issues/${issueId}`,
-        "GET",
-        null,
-        token
-      );
-
-      const loadedIssue = issueData.issue;
-
-      if (!loadedIssue) {
-        throw new Error("Issue not found.");
-      }
-
-      setIssue(loadedIssue);
-
-      setStatus(loadedIssue.status || "Open");
-      setPriority(loadedIssue.priority || "Medium");
-
-      setAssignedTo(
-        loadedIssue.assignedTo?._id ||
-          loadedIssue.assignedTo ||
-          ""
-      );
-
-      /*
-       * Get project ID.
-       *
-       * Depending on backend response, projectId can be:
-       * - an object
-       * - a string
-       */
-      const projectId =
-        typeof loadedIssue.projectId === "object"
-          ? loadedIssue.projectId?._id
-          : loadedIssue.projectId;
-
-      /*
-       * Load the actual project separately.
-       */
-      if (projectId) {
-        const projectData = await apiRequest(
-          `/projects/${projectId}`,
-          "GET",
-          null,
-          token
-        );
-
-        setProject(projectData.project);
-      }
-    } catch (err) {
-      setError(
-        err.message || "Unable to load issue."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [issueId, token]);
+  const assignees = getProjectMembers(issue?.projectId || issue?.project);
 
   useEffect(() => {
-    loadIssue();
-  }, [loadIssue]);
-
-  /*
-   * ONLY project creator + project members.
-   *
-   * No /auth/users request.
-   * No global users list.
-   */
-  const projectUsers = useMemo(() => {
-    if (!project) {
-      return [];
+    async function loadData() {
+      try {
+        setLoading(true);
+        const data = await apiService.getIssueById(id);
+        const issueData = data?.issue || data;
+        setIssue(issueData);
+        setStatus(issueData.status || 'Open');
+        setPriority(issueData.priority || 'Medium');
+        setAssignedTo(getUserId(issueData.assignedTo) || '');
+      } catch (err) {
+        setError(err.message || 'Failed to fetch issue details');
+      } finally {
+        setLoading(false);
+      }
     }
+    loadData();
+  }, [id]);
 
-    const users = [];
-
-    // Project creator
-    if (project.createdBy?._id) {
-      users.push(project.createdBy);
-    }
-
-    // Project members
-    if (Array.isArray(project.members)) {
-      users.push(...project.members);
-    }
-
-    /*
-     * Remove duplicates.
-     */
-    return users.filter(
-      (user, index, self) =>
-        user?._id &&
-        index ===
-          self.findIndex(
-            (item) => item?._id === user._id
-          )
-    );
-  }, [project]);
-
-  /*
-   * Update issue
-   */
-  const updateIssue = async (changes = {}) => {
-    if (!issueId) {
-      return;
-    }
-
+  const handleUpdate = async () => {
     try {
       setSaving(true);
-      setError("");
-
-      const data = await apiRequest(
-        `/issues/${issueId}`,
-        "PUT",
-        changes,
-        token
-      );
-
-      setIssue(data.issue);
-
-      setStatus(
-        data.issue.status || "Open"
-      );
-
-      setPriority(
-        data.issue.priority || "Medium"
-      );
-
-      setAssignedTo(
-        data.issue.assignedTo?._id ||
-          data.issue.assignedTo ||
-          ""
-      );
+      await apiService.updateIssue(id, { status, priority, assignedTo: assignedTo || null });
+      setIssue((prev) => ({
+        ...prev,
+        status,
+        priority,
+        assignedTo: assignees.find((user) => String(user._id) === String(assignedTo)) || null,
+      }));
     } catch (err) {
-      setError(
-        err.message || "Unable to update issue."
-      );
+      setError(err.message || 'Failed to update issue');
     } finally {
       setSaving(false);
     }
   };
 
-  /*
-   * Status change
-   */
-  const handleStatusChange = async (value) => {
-    setStatus(value);
-
-    await updateIssue({
-      status: value,
-    });
-  };
-
-  /*
-   * Priority change
-   */
-  const handlePriorityChange = async (value) => {
-    setPriority(value);
-
-    await updateIssue({
-      priority: value,
-    });
-  };
-
-  /*
-   * Assigned user change
-   */
-  const handleAssignedChange = async (event) => {
-    const value = event.target.value;
-
-    setAssignedTo(value);
-
-    await updateIssue({
-      assignedTo: value || null,
-    });
-  };
-
-  /*
-   * Delete issue
-   */
   const handleDelete = async () => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this issue?"
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
+    if (!confirm('Are you sure you want to delete this issue?')) return;
     try {
-      setDeleting(true);
-      setError("");
-
-      await apiRequest(
-        `/issues/${issueId}`,
-        "DELETE",
-        null,
-        token
-      );
-
-      router.push("/issues");
+      await apiService.deleteIssue(id);
+      router.push('/issues');
     } catch (err) {
-      setError(
-        err.message || "Unable to delete issue."
-      );
-    } finally {
-      setDeleting(false);
+      setError(err.message || 'Failed to delete issue');
     }
   };
 
-  /*
-   * Loading
-   */
-  if (loading) {
-    return (
-      <ProtectedRoute>
-        <AppShell>
-          <Loading />
-        </AppShell>
-      </ProtectedRoute>
-    );
-  }
-
-  /*
-   * Issue not found
-   */
-  if (!issue) {
-    return (
-      <ProtectedRoute>
-        <AppShell>
-          <div className="page">
-            <ErrorMessage
-              message={
-                error || "Issue not found."
-              }
-            />
-
-            <div style={{ marginTop: 20 }}>
-              <Button
-                onClick={() =>
-                  router.push("/issues")
-                }
-              >
-                Back to Issues
-              </Button>
-            </div>
-          </div>
-        </AppShell>
-      </ProtectedRoute>
-    );
-  }
+  if (loading) return <AppShell><Loading /></AppShell>;
+  if (!issue) return <AppShell><ErrorMessage message={error || 'Issue not found'} /></AppShell>;
 
   return (
-    <ProtectedRoute>
-      <AppShell>
-        <div className="page">
+    <AppShell>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between border-b border-[#211c3a] pb-4">
+          <div className="flex items-center gap-3">
+            <Link href="/issues" className="rounded-lg p-2 text-[#656185] hover:bg-[#18152b] hover:text-[#f5f6fa]">
+              <ArrowLeft size={18} className="shrink-0" />
+            </Link>
+            <span className="font-mono text-sm text-[#9fa1b8]">
+              {issue.identifier || `ISS-${id?.slice(-4).toUpperCase()}`}
+            </span>
+          </div>
 
-          {/* Header */}
-          <div className="page-header">
-            <div>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() =>
-                  router.push("/issues")
-                }
-              >
-                ← Back to Issues
-              </button>
+          <div className="flex items-center gap-2">
+            <Link href={`/issues/${id}/comments`}>
+              <Button variant="secondary" size="sm" icon={MessageSquare}>Comments</Button>
+            </Link>
+            <Link href={`/issues/${id}/history`}>
+              <Button variant="secondary" size="sm" icon={History}>History</Button>
+            </Link>
+            <Button variant="danger" size="sm" icon={Trash2} onClick={handleDelete}>Delete</Button>
+          </div>
+        </div>
 
-              <h1 style={{ marginTop: 16 }}>
-                {issue.title}
-              </h1>
+        <ErrorMessage message={error} />
 
-              <p className="muted">
-                Issue details and management
+        {/* Two-Column Grid Workspace */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-4 lg:col-span-2">
+            <h1 className="text-2xl font-bold tracking-tight text-[#f5f6fa]">{issue.title}</h1>
+            <div className="rounded-2xl border border-[#272242] bg-[#151324] p-6">
+              <h4 className="mb-3 text-xs font-semibold tracking-wider text-[#656185] uppercase">Description</h4>
+              <p className="text-sm leading-relaxed whitespace-pre-wrap text-[#9fa1b8]">
+                {issue.description || 'No description provided.'}
               </p>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                alignItems: "center",
-              }}
-            >
-              <StatusBadge
-                status={issue.status}
-              />
-
-              <PriorityBadge
-                priority={issue.priority}
-              />
             </div>
           </div>
 
-          {/* Error */}
-          {error && (
-            <div style={{ marginBottom: 20 }}>
-              <ErrorMessage message={error} />
-            </div>
-          )}
+          <div className="space-y-4">
+            <div className="space-y-4 rounded-2xl border border-[#272242] bg-[#151324] p-5">
+              <h4 className="text-xs font-semibold tracking-wider text-[#656185] uppercase">Properties</h4>
 
-          {/* Main information */}
-          <div className="grid">
-
-            {/* Issue information */}
-            <Card>
-              <h2>Issue Information</h2>
-
-              <div style={{ marginTop: 20 }}>
-                <strong>Description</strong>
-
-                <p
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    marginTop: 8,
-                  }}
-                >
-                  {issue.description}
-                </p>
-              </div>
-
-              <div style={{ marginTop: 20 }}>
-                <strong>Project</strong>
-
-                <p className="muted">
-                  {project?.name ||
-                    issue.projectId?.name ||
-                    "Unknown project"}
-                </p>
-              </div>
-
-              <div style={{ marginTop: 20 }}>
-                <strong>Created By</strong>
-
-                <p className="muted">
-                  {issue.createdBy?.name ||
-                    "Unknown user"}
-                </p>
-              </div>
-
-              <div style={{ marginTop: 20 }}>
-                <strong>Created At</strong>
-
-                <p className="muted">
-                  {issue.createdAt
-                    ? new Date(
-                        issue.createdAt
-                      ).toLocaleString()
-                    : "Unknown"}
-                </p>
-              </div>
-            </Card>
-
-            {/* Manage issue */}
-            <Card>
-              <h2>Manage Issue</h2>
-
-              {/* Status */}
-              <div style={{ marginTop: 20 }}>
-                <label className="label">
-                  Status
-                </label>
-
-                <ChipGroup
-                  options={statuses}
-                  value={status}
-                  onChange={
-                    handleStatusChange
-                  }
-                />
-              </div>
-
-              {/* Priority */}
-              <div style={{ marginTop: 24 }}>
-                <label className="label">
-                  Priority
-                </label>
-
-                <ChipGroup
-                  options={priorities}
-                  value={priority}
-                  onChange={
-                    handlePriorityChange
-                  }
-                />
-              </div>
-
-              {/* Assigned User */}
-              <div style={{ marginTop: 24 }}>
-                <label className="label">
-                  Assigned User
-                </label>
-
+              <div>
+                <label className="field-label">Status</label>
                 <select
-                  className="input"
-                  value={assignedTo}
-                  onChange={
-                    handleAssignedChange
-                  }
-                  disabled={
-                    saving ||
-                    !project
-                  }
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="field-select"
                 >
-                  <option value="">
-                    Unassigned
-                  </option>
+                  <option value="Open">Open</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Resolved">Resolved</option>
+                  <option value="Closed">Closed</option>
+                </select>
+              </div>
 
-                  {projectUsers.map((user) => (
-                    <option
-                      key={user._id}
-                      value={user._id}
-                    >
+              <div>
+                <label className="field-label">Priority</label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="field-select"
+                >
+                  <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
+                  <option value="High">High</option>
+                  <option value="Critical">Critical</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="field-label">Assigned to</label>
+                <select
+                  value={assignedTo}
+                  onChange={(e) => setAssignedTo(e.target.value)}
+                  className="field-select"
+                >
+                  <option value="">Unassigned</option>
+                  {assignees.map((user) => (
+                    <option key={user._id} value={user._id}>
                       {user.name}
                     </option>
                   ))}
                 </select>
-
-                <p
-                  className="muted"
-                  style={{
-                    marginTop: 8,
-                  }}
-                >
-                  Only the project creator and
-                  project members can be assigned
-                  to this issue.
-                </p>
-
-                {!project && (
-                  <p
-                    className="muted"
-                    style={{
-                      marginTop: 8,
-                    }}
-                  >
-                    Loading project members...
-                  </p>
-                )}
               </div>
 
-              {saving && (
-                <p
-                  className="muted"
-                  style={{
-                    marginTop: 16,
-                  }}
-                >
-                  Saving changes...
-                </p>
-              )}
-            </Card>
-          </div>
-
-          {/* Assignment */}
-          <Card style={{ marginTop: 20 }}>
-            <h2>Assignment</h2>
-
-            {issue.assignedTo ? (
-              <div style={{ marginTop: 16 }}>
-                <strong>
-                  {issue.assignedTo.name}
-                </strong>
-
-                {issue.assignedTo.email && (
-                  <p className="muted">
-                    {issue.assignedTo.email}
-                  </p>
-                )}
-              </div>
-            ) : (
-              <p
-                className="muted"
-                style={{ marginTop: 16 }}
-              >
-                This issue is currently
-                unassigned.
-              </p>
-            )}
-          </Card>
-
-          {/* Screenshots */}
-          {issue.screenshots &&
-            issue.screenshots.length > 0 && (
-              <Card
-                style={{
-                  marginTop: 20,
-                }}
-              >
-                <h2>Screenshots</h2>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "repeat(auto-fill, minmax(220px, 1fr))",
-                    gap: 16,
-                    marginTop: 16,
-                  }}
-                >
-                  {issue.screenshots.map(
-                    (screenshot, index) => (
-                      <img
-                        key={index}
-                        src={screenshot}
-                        alt={`Issue screenshot ${
-                          index + 1
-                        }`}
-                        style={{
-                          width: "100%",
-                          maxHeight: 400,
-                          objectFit: "contain",
-                          borderRadius: 10,
-                          border:
-                            "1px solid #e5e7eb",
-                          background:
-                            "#f9fafb",
-                        }}
-                      />
-                    )
-                  )}
+              <div className="space-y-2 border-t border-[#211c3a] pt-3 text-sm">
+                <div className="flex justify-between text-[#656185]">
+                  <span>Project</span>
+                  <span className="font-medium text-[#9fa1b8]">
+                    {issue.projectId?.name || issue.project?.name || 'General'}
+                  </span>
                 </div>
-              </Card>
-            )}
-
-          {/* Actions */}
-          <Card style={{ marginTop: 20 }}>
-            <h2>Issue Actions</h2>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                flexWrap: "wrap",
-                marginTop: 16,
-              }}
-            >
-              <Button
-                type="button"
-                onClick={() =>
-                  router.push(
-                    `/issues/${issueId}/comments`
-                  )
-                }
-              >
-                Comments
-              </Button>
+                <div className="flex justify-between text-[#656185]">
+                  <span>Created</span>
+                  <span className="font-medium text-[#9fa1b8]">{new Date(issue.createdAt || Date.now()).toLocaleDateString()}</span>
+                </div>
+              </div>
 
               <Button
-                type="button"
-                onClick={() =>
-                  router.push(
-                    `/issues/${issueId}/history`
-                  )
-                }
+                variant="primary"
+                loading={saving}
+                onClick={handleUpdate}
+                className="mt-2 w-full"
               >
-                History
+                Save Properties
               </Button>
-
-              <button
-                type="button"
-                className="danger-button"
-                onClick={handleDelete}
-                disabled={deleting}
-              >
-                {deleting
-                  ? "Deleting..."
-                  : "Delete Issue"}
-              </button>
             </div>
-          </Card>
-
+          </div>
         </div>
-      </AppShell>
-    </ProtectedRoute>
+      </div>
+    </AppShell>
   );
 }

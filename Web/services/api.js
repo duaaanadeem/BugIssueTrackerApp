@@ -19,8 +19,12 @@ export async function apiRequest(
       "Content-Type": "application/json",
     };
 
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
+    const authToken =
+      token ||
+      (typeof window !== "undefined" ? localStorage.getItem("token") : null);
+
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
     }
 
     const response = await fetch(`${API_URL}${endpoint}`, {
@@ -80,3 +84,41 @@ export async function apiRequest(
     throw error;
   }
 }
+
+export const apiService = {
+  // Auth
+  login: (email, password) =>
+    apiRequest("/auth/login", "POST", { email, password }),
+  signup: (name, email, password) =>
+    apiRequest("/auth/signup", "POST", { name, email, password }),
+  getProfile: () => apiRequest("/users/me"),
+  updateProfile: (userData) => apiRequest("/users/me", "PUT", userData),
+
+  // Issues
+  getIssues: (params = "") => apiRequest(`/issues${params}`),
+  getIssueById: (id) => apiRequest(`/issues/${id}`),
+  createIssue: (issueData) => apiRequest("/issues", "POST", issueData),
+  updateIssue: (id, updates) => apiRequest(`/issues/${id}`, "PUT", updates),
+  deleteIssue: (id) => apiRequest(`/issues/${id}`, "DELETE"),
+
+  // Comments (matches router.post("/comments") and router.get("/:issueId/comments"))
+  getComments: (issueId) => apiRequest(`/issues/${issueId}/comments`),
+  addComment: (issueId, commentData) =>
+    apiRequest("/issues/comments", "POST", {
+      issueId,
+      text: typeof commentData === "string" ? commentData : commentData.text,
+    }),
+
+  // History (matches router.get("/:issueId/history"))
+  getIssueHistory: (issueId) => apiRequest(`/issues/${issueId}/history`),
+
+  // Projects
+  getProjects: () => apiRequest("/projects"),
+  getProjectById: (id) => apiRequest(`/projects/${id}`),
+  createProject: (projectData) =>
+    apiRequest("/projects", "POST", projectData),
+  getIssuesByProject: (projectId) =>
+    apiRequest(`/issues?projectId=${projectId}`),
+};
+
+export default apiService;

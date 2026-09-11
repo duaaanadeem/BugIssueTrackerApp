@@ -162,12 +162,12 @@ const getUsers = async (req, res) => {
 // Search registered users by name
 const searchUserByName = async (req, res) => {
   try {
-    const name = req.query.name?.trim();
+    const name = req.query.name?.trim() || req.query.username?.trim();
 
     if (!name) {
       return res.status(400).json({
         success: false,
-        message: "Name is required",
+        message: "Username is required",
       });
     }
 

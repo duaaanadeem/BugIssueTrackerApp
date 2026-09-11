@@ -1,43 +1,29 @@
-"use client";
+'use client';
+import { useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
+import { useAuth } from '../context/AuthContext';
+import Loading from './Loading';
 
-import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { useAuth } from "../context/AuthContext";
-import Loading from "./Loading";
-
-const PUBLIC_PATHS = ["/login", "/signup"];
-
-export default function ProtectedRoute({ children, guestOnly = false }) {
-  const { loading, token } = useAuth();
+export default function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    if (loading) {
-      return;
+    if (!loading && !user) {
+      router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
     }
-
-    if (guestOnly && token) {
-      router.replace("/home");
-      return;
-    }
-
-    if (!guestOnly && !token) {
-      router.replace("/login");
-    }
-  }, [loading, token, guestOnly, router, pathname]);
+  }, [user, loading, router, pathname]);
 
   if (loading) {
-    return <Loading message="Restoring session..." />;
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#0c0b14]">
+        <Loading />
+      </div>
+    );
   }
 
-  if (guestOnly && token) {
-    return <Loading message="Redirecting..." />;
-  }
-
-  if (!guestOnly && !token && !PUBLIC_PATHS.includes(pathname)) {
-    return <Loading message="Redirecting to login..." />;
-  }
+  if (!user) return null;
 
   return children;
 }

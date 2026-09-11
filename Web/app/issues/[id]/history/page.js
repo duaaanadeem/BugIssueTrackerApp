@@ -1,143 +1,78 @@
-"use client";
-
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import AppShell from "../../../../components/AppShell";
-import ErrorMessage from "../../../../components/ErrorMessage";
-import Loading from "../../../../components/Loading";
-import ProtectedRoute from "../../../../components/ProtectedRoute";
-import { useAuth } from "../../../../context/AuthContext";
-import { apiRequest } from "../../../../services/api";
+'use client';
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import AppShell from '../../../../components/AppShell';
+import Loading from '../../../../components/Loading';
+import ErrorMessage from '../../../../components/ErrorMessage';
+import { apiService } from '../../../../services/api';
+import { ArrowLeft, Clock } from 'lucide-react';
 
 export default function HistoryPage() {
-  return (
-    <ProtectedRoute>
-      <HistoryContent />
-    </ProtectedRoute>
-  );
-}
-
-function HistoryContent() {
   const { id } = useParams();
-  const { token, handleAuthError } = useAuth();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const loadHistory = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError("");
-      const data = await apiRequest(`/issues/${id}/history`, "GET", null, token);
-      setHistory(data.history || []);
-    } catch (err) {
-      handleAuthError(err);
-      setError(err.message || "Failed to load issue history.");
-    } finally {
-      setLoading(false);
-    }
-  }, [id, token, handleAuthError]);
+  const [error, setError] = useState('');
 
   useEffect(() => {
+    async function loadHistory() {
+      try {
+        setLoading(true);
+        const data = await apiService.getIssueHistory(id);
+        setHistory(Array.isArray(data) ? data : data?.history || []);
+      } catch (err) {
+        setError(err.message || 'Failed to load audit history');
+      } finally {
+        setLoading(false);
+      }
+    }
     loadHistory();
-  }, [loadHistory]);
-
-  const formatDate = (date) => {
-    if (!date) {
-      return "Unknown date";
-    }
-
-    const value = new Date(date);
-    if (Number.isNaN(value.getTime())) {
-      return "Unknown date";
-    }
-
-    return value.toLocaleString();
-  };
-
-  const getActionColor = (action) => {
-    const value = (action || "").toLowerCase();
-
-    if (value.includes("status")) {
-      return { background: "#EEF2FF", color: "#4F46E5" };
-    }
-
-    if (value.includes("priority")) {
-      return { background: "#FFF7ED", color: "#D97706" };
-    }
-
-    if (value.includes("assign")) {
-      return { background: "#ECFDF5", color: "#059669" };
-    }
-
-    return { background: "#F1F5F9", color: "#475569" };
-  };
+  }, [id]);
 
   return (
-    <AppShell title="History">
-      <div className="header-row">
-        <div>
-          <h1 className="page-title">Issue History</h1>
-          <p className="muted">Track changes made to this issue</p>
-        </div>
-        <div className="empty-icon" style={{ background: "#EEF2FF", color: "#4F46E5" }}>
-          {history.length}
-        </div>
-      </div>
-
-      {loading ? (
-        <Loading message="Loading history..." />
-      ) : error ? (
-        <ErrorMessage message={error} onRetry={loadHistory} />
-      ) : history.length === 0 ? (
-        <div className="empty">
-          <div className="empty-icon" style={{ background: "#EEF2FF", color: "#4F46E5" }}>
-            ↺
+    <AppShell>
+      <div className="max-w-2xl mx-auto space-y-4">
+        <div className="flex items-center gap-3 pb-3 border-b border-[#23252a]">
+          <Link href={`/issues/${id}`} className="text-[#616672] hover:text-[#e6e8ec] p-1 rounded hover:bg-[#18191d]">
+            <ArrowLeft size={16} />
+          </Link>
+          <div>
+            <h1 className="text-base font-semibold text-[#e6e8ec]">Activity History</h1>
+            <p className="text-xs text-[#9094a0]">Audit trail and property transitions</p>
           </div>
-          <h2>No History Yet</h2>
-          <p className="muted">Changes made to this issue will appear here.</p>
         </div>
-      ) : (
-        history.map((item, index) => {
-          const colors = getActionColor(item.action);
-          const actor =
-            item.userId?.name ||
-            item.createdBy?.name ||
-            item.actor?.name ||
-            "User";
 
-          return (
-            <div key={item._id || index} className="timeline">
-              <div className="timeline-mark">
-                <div className="dot" />
-                {index !== history.length - 1 ? <div className="line" /> : null}
-              </div>
-              <div className="card card-border" style={{ flex: 1, marginBottom: 16 }}>
-                <div className="row space-between wrap">
-                  <span className="badge" style={colors}>
-                    {item.action || "Updated"}
-                  </span>
-                  <span className="faint">{formatDate(item.createdAt)}</span>
-                </div>
-                <p className="muted">
-                  Changed by <strong>{actor}</strong>
-                </p>
-                <div className="row wrap" style={{ background: "#F8FAFC", borderRadius: 12, padding: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div className="faint">OLD VALUE</div>
-                    <div>{item.oldValue || "None"}</div>
+        <ErrorMessage message={error} />
+
+        {loading ? (
+          <Loading />
+        ) : history.length === 0 ? (
+          <div className="text-center py-12 border border-dashed border-[#23252a] rounded-lg text-[#616672] text-xs">
+            No history recorded for this issue.
+          </div>
+        ) : (
+          <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-[1px] before:bg-[#23252a]">
+            {history.map((event, index) => (
+              <div key={event._id || index} className="relative flex items-start gap-3">
+                <span className="absolute -left-6 top-1 w-2 h-2 rounded-full bg-indigo-500 ring-4 ring-[#0d0e11]" />
+                <div className="flex-1 text-xs text-[#9094a0]">
+                  <span className="font-medium text-[#e6e8ec]">{event.user?.name || 'User'} </span>
+                  {event.action || 'updated the issue'}{' '}
+                  {event.from && event.to && (
+                    <span className="text-[#616672]">
+                      ({event.from} &rarr; {event.to})
+                    </span>
+                  )}
+                  <div className="text-[11px] text-[#616672] mt-0.5 flex items-center gap-1">
+                    <Clock size={11} />
+                    {new Date(event.createdAt || Date.now()).toLocaleString()}
                   </div>
-                  <span className="muted">→</span>
-                  <div style={{ flex: 1 }}>
-                    <div className="faint">NEW VALUE</div>
-                    <strong>{item.newValue || "None"}</strong>
-                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </AppShell>
   );
 }

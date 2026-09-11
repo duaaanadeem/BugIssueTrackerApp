@@ -1,22 +1,13 @@
-export default function ErrorMessage({ message, onRetry }) {
-  if (!message) {
-    return null;
-  }
+'use client';
+import React from 'react';
+import { AlertTriangle } from 'lucide-react';
 
+export default function ErrorMessage({ message }) {
+  if (!message) return null;
   return (
-    <div className="center-state">
-      <div>
-        <div className="empty-icon">!</div>
-        <h2 className="page-title" style={{ fontSize: 20 }}>
-          Something went wrong
-        </h2>
-        <p className="error-text">{message}</p>
-        {onRetry ? (
-          <button className="btn btn-primary" type="button" onClick={onRetry}>
-            Try Again
-          </button>
-        ) : null}
-      </div>
+    <div className="flex items-center gap-2 p-2.5 rounded-md bg-red-500/10 border border-red-500/20 text-red-400 text-xs my-2">
+      <AlertTriangle size={14} className="shrink-0" />
+      <span>{message}</span>
     </div>
   );
 }

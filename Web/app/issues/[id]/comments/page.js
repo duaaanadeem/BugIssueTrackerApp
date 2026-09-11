@@ -1,126 +1,100 @@
-"use client";
-
-import { useCallback, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import AppShell from "../../../../components/AppShell";
-import Button from "../../../../components/Button";
-import ErrorMessage from "../../../../components/ErrorMessage";
-import Loading from "../../../../components/Loading";
-import ProtectedRoute from "../../../../components/ProtectedRoute";
-import { useAuth } from "../../../../context/AuthContext";
-import { apiRequest } from "../../../../services/api";
+'use client';
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import AppShell from '../../../../components/AppShell';
+import Button from '../../../../components/Button';
+import Loading from '../../../../components/Loading';
+import ErrorMessage from '../../../../components/ErrorMessage';
+import { apiService } from '../../../../services/api';
+import { ArrowLeft, Send } from 'lucide-react';
 
 export default function CommentsPage() {
-  return (
-    <ProtectedRoute>
-      <CommentsContent />
-    </ProtectedRoute>
-  );
-}
-
-function CommentsContent() {
   const { id } = useParams();
-  const { token, user, handleAuthError } = useAuth();
   const [comments, setComments] = useState([]);
-  const [text, setText] = useState("");
+  const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-  const [formError, setFormError] = useState("");
-
-  const loadComments = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError("");
-      const data = await apiRequest(`/issues/${id}/comments`, "GET", null, token);
-      setComments(data.comments || []);
-    } catch (err) {
-      handleAuthError(err);
-      setError(err.message || "Unable to load comments");
-    } finally {
-      setLoading(false);
-    }
-  }, [id, token, handleAuthError]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    loadComments();
-  }, [loadComments]);
-
-  const addComment = async (event) => {
-    event.preventDefault();
-    setFormError("");
-
-    if (!text.trim()) {
-      setFormError("Please write a comment first.");
-      return;
+    async function loadComments() {
+      try {
+        setLoading(true);
+        const data = await apiService.getComments(id);
+        setComments(Array.isArray(data) ? data : data?.comments || []);
+      } catch (err) {
+        setError(err.message || 'Failed to load comments');
+      } finally {
+        setLoading(false);
+      }
     }
+    loadComments();
+  }, [id]);
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!text.trim()) return;
     try {
-      setSending(true);
-      const data = await apiRequest(
-        "/issues/comments",
-        "POST",
-        {
-          issueId: id,
-          text: text.trim(),
-        },
-        token
-      );
-      setComments((previous) => [...previous, data.comment]);
-      setText("");
+      setSubmitting(true);
+      const newComment = await apiService.addComment(id, { text });
+      setComments((prev) => [...prev, newComment]);
+      setText('');
     } catch (err) {
-      handleAuthError(err);
-      setFormError(err.message || "Unable to add comment");
+      setError(err.message || 'Failed to post comment');
     } finally {
-      setSending(false);
+      setSubmitting(false);
     }
   };
 
   return (
-    <AppShell title="Comments">
-      {loading ? (
-        <Loading message="Loading comments..." />
-      ) : error ? (
-        <ErrorMessage message={error} onRetry={loadComments} />
-      ) : comments.length === 0 ? (
-        <div className="empty">
-          <div className="empty-icon">C</div>
-          <h2>No comments yet</h2>
-          <p className="muted">Start the conversation about this issue.</p>
+    <AppShell>
+      <div className="max-w-2xl mx-auto space-y-4">
+        <div className="flex items-center gap-3 pb-3 border-b border-[#23252a]">
+          <Link href={`/issues/${id}`} className="text-[#616672] hover:text-[#e6e8ec] p-1 rounded hover:bg-[#18191d]">
+            <ArrowLeft size={16} />
+          </Link>
+          <div>
+            <h1 className="text-base font-semibold text-[#e6e8ec]">Discussion</h1>
+            <p className="text-xs text-[#9094a0]">{comments.length} comments posted</p>
+          </div>
         </div>
-      ) : (
-        comments.map((comment) => {
-          const isMine = comment.userId?._id === user?.id;
 
-          return (
-            <div key={comment._id} className={`comment ${isMine ? "mine" : ""}`}>
-              <div className="row space-between">
-                <strong>{comment.userId?.name || "User"}</strong>
-                <span className="faint">
-                  {comment.createdAt
-                    ? new Date(comment.createdAt).toLocaleDateString()
-                    : ""}
-                </span>
+        <ErrorMessage message={error} />
+
+        {loading ? (
+          <Loading />
+        ) : (
+          <div className="space-y-3">
+            {comments.map((c, i) => (
+              <div key={c._id || i} className="p-3 bg-[#121316] border border-[#23252a] rounded-lg space-y-1">
+                <div className="flex items-center justify-between text-[11px] text-[#616672]">
+                  <span className="font-medium text-[#e6e8ec]">{c.user?.name || c.author || 'User'}</span>
+                  <span>{new Date(c.createdAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <p className="text-xs text-[#9094a0] leading-relaxed">{c.text || c.content}</p>
               </div>
-              <p className="muted">{comment.text}</p>
-            </div>
-          );
-        })
-      )}
+            ))}
+          </div>
+        )}
 
-      <form className="composer" onSubmit={addComment} style={{ marginTop: 16 }}>
-        <textarea
-          className="textarea"
-          style={{ minHeight: 70, margin: 0 }}
-          placeholder="Write a comment..."
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-        />
-        <Button type="submit" disabled={sending}>
-          {sending ? "..." : "Send"}
-        </Button>
-      </form>
-      {formError ? <p className="error-text">{formError}</p> : null}
+        <form onSubmit={handleSubmit} className="pt-2">
+          <div className="bg-[#121316] border border-[#23252a] rounded-lg p-2 flex flex-col gap-2">
+            <textarea
+              rows={3}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Leave a comment..."
+              className="w-full bg-transparent text-xs text-[#e6e8ec] placeholder-[#616672] p-1 focus:outline-none resize-none"
+            />
+            <div className="flex justify-end">
+              <Button type="submit" variant="primary" size="sm" icon={Send} loading={submitting}>
+                Comment
+              </Button>
+            </div>
+          </div>
+        </form>
+      </div>
     </AppShell>
   );
 }
