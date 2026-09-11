@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import AppShell from "../../../components/AppShell";
@@ -11,6 +11,7 @@ import ErrorMessage from "../../../components/ErrorMessage";
 import Input from "../../../components/Input";
 import Loading from "../../../components/Loading";
 import ProtectedRoute from "../../../components/ProtectedRoute";
+
 import { useAuth } from "../../../context/AuthContext";
 import { apiRequest } from "../../../services/api";
 
@@ -28,44 +29,24 @@ const statuses = [
   "Closed",
 ];
 
-export default function CreateIssuePage() {
+function CreateIssueContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-
   const { token } = useAuth();
 
   const initialProjectId =
     searchParams.get("projectId") || "";
 
   const [projects, setProjects] = useState([]);
-  const [projectId, setProjectId] =
-    useState(initialProjectId);
-
+  const [projectId, setProjectId] = useState(initialProjectId);
   const [title, setTitle] = useState("");
-  const [description, setDescription] =
-    useState("");
-
-  const [priority, setPriority] =
-    useState("Medium");
-
-  const [status, setStatus] =
-    useState("Open");
-
-  const [assignedTo, setAssignedTo] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [creating, setCreating] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  useEffect(() => {
-    loadProjects();
-  }, []);
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState("Medium");
+  const [status, setStatus] = useState("Open");
+  const [assignedTo, setAssignedTo] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
 
   const loadProjects = async () => {
     try {
@@ -88,16 +69,19 @@ export default function CreateIssuePage() {
     }
   };
 
+  useEffect(() => {
+    if (token) {
+      loadProjects();
+    }
+  }, [token]);
+
   const selectedProject = projects.find(
     (project) => project._id === projectId
   );
 
   /*
-   * ONLY:
-   * 1. Project creator
-   * 2. Project members
-   *
-   * No other registered users are included.
+   * Only project creator and project members
+   * can be assigned to an issue.
    */
   const projectUsers = useMemo(() => {
     if (!selectedProject) {
@@ -336,5 +320,21 @@ export default function CreateIssuePage() {
         </div>
       </AppShell>
     </ProtectedRoute>
+  );
+}
+
+export default function CreateIssuePage() {
+  return (
+    <Suspense
+      fallback={
+        <ProtectedRoute>
+          <AppShell>
+            <Loading />
+          </AppShell>
+        </ProtectedRoute>
+      }
+    >
+      <CreateIssueContent />
+    </Suspense>
   );
 }
